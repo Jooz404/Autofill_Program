@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dokumentasi Proyek Pertamina S&D Autofill Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0f1215;
+      --bg-card: #161b22;
+      --bg-sidebar: #12161c;
+      --border-color: #21262d;
+      --text-main: #e6edf3;
+      --text-muted: #8b949e;
+      --pertamina-red: #ff4b5c;
+      --pertamina-blue: #007bff;
+      --pertamina-green: #28a745;
+      --code-bg: #0d1117;
+      --accent-glow: rgba(0, 123, 255, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      display: flex;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* Sidebar Navigation */
+    .sidebar {
+      width: 280px;
+      background-color: var(--bg-sidebar);
+      border-right: 1px solid var(--border-color);
+      position: fixed;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      overflow-y: auto;
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      background: #1c2128;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .brand-title h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .brand-title p {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .nav-menu {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .nav-menu a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 500;
+      padding: 10px 14px;
+      border-radius: 8px;
+      display: block;
+      transition: all 0.2s ease;
+    }
+
+    .nav-menu a:hover, .nav-menu a.active {
+      color: #fff;
+      background-color: rgba(255, 255, 255, 0.06);
+      border-left: 3px solid var(--pertamina-blue);
+    }
+
+    /* Main Content */
+    .content {
+      margin-left: 280px;
+      flex: 1;
+      padding: 40px 48px;
+      max-width: 1100px;
+    }
+
+    .hero-banner {
+      background: linear-gradient(135deg, rgba(0, 123, 255, 0.1) 0%, rgba(40, 167, 69, 0.1) 100%);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 40px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .hero-banner h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.2rem;
+      font-weight: 800;
+      background: linear-gradient(90deg, #fff, #90caf9);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 12px;
+    }
+
+    .hero-banner p {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 800px;
+    }
+
+    .badge-bar {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+
+    }
+
+    .badge.blue { color: #64b5f6; border-color: rgba(100, 181, 246, 0.3); }
+    .badge.green { color: #81c784; border-color: rgba(129, 199, 132, 0.3); }
+    .badge.red { color: #e57373; border-color: rgba(229, 115, 115, 0.3); }
+
+    /* Documentation Sections */
+    section {
+      margin-bottom: 48px;
+      scroll-margin-top: 40px;
+    }
+
+    h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h3 {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #90caf9;
+      margin: 24px 0 12px 0;
+    }
+
+    p {
+      margin-bottom: 16px;
+      color: var(--text-main);
+    }
+
+    ul, ol {
+      margin: 0 0 20px 24px;
+      color: var(--text-main);
+    }
+
+    li {
+      margin-bottom: 8px;
+    }
+
+    /* Cards */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin: 20px 0;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: var(--pertamina-blue);
+    }
+
+    .card h4 {
+      font-size: 1.05rem;
+      color: #fff;
+      margin-bottom: 8px;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    .card p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      margin-bottom: 0;
+    }
+
+    /* Code Blocks */
+    pre, code {
+      font-family: 'Fira Code', monospace;
+    }
+
+    code {
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.88rem;
+      color: #ff80ab;
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 20px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+
+    pre code {
+      background: none;
+      padding: 0;
+      color: #e6edf3;
+      font-size: 0.88rem;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      background: var(--bg-card);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    th, td {
+      padding: 14px 18px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 0.9rem;
+    }
+
+    th {
+      background: #1c2128;
+      color: #fff;
+      font-weight: 600;
+
+    }
+
+    tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Callout Box */
+    .callout {
+      background: rgba(0, 123, 255, 0.08);
+      border-left: 4px solid var(--pertamina-blue);
+      border-radius: 0 8px 8px 0;
+      padding: 16px 20px;
+      margin: 20px 0;
+    }
+
+    .callout.warning {
+      background: rgba(255, 75, 92, 0.08);
+      border-left-color: var(--pertamina-red);
+    }
+
+    .callout.success {
+      background: rgba(40, 167, 69, 0.08);
+      border-left-color: var(--pertamina-green);
+    }
+
+    .callout-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+      font-size: 0.95rem;
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 60px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border-color);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand-header">
+      <div class="brand-logo">
+        <svg width="24" height="24" viewBox="0 0 128 128">
+          <rect x="12" y="12" width="104" height="104" rx="28" fill="#14171a"/>
+          <path d="M 64,24 A 40,40 0 1,1 24,64" fill="none" stroke="#007bff" stroke-width="8" stroke-linecap="round"/>
+          <path d="M 64,104 A 40,40 0 0,1 104,64" fill="none" stroke="#28a745" stroke-width="8" stroke-linecap="round"/>
+          <polygon points="56,50 80,64 56,78" fill="#28a745"/>
+        </svg>
+      </div>
+      <div class="brand-title">
+        <h2>Autofill RSD</h2>
+        <p>Pertamina S&D Assistant</p>
+      </div>
+    </div>
+
+    <ul class="nav-menu">
+      <li><a href="#overview" class="active">1. Gambaran Umum</a></li>
+      <li><a href="#architecture">2. Arsitektur Sistem</a></li>
+      <li><a href="#files">3. Struktur File Proyek</a></li>
+      <li><a href="#modules">4. Penjelasan Modul OOP</a></li>
+      <li><a href="#excel-format">5. Format Data Excel</a></li>
+      <li><a href="#tanks-config">6. Config Tangki & Blending</a></li>
+      <li><a href="#installation">7. Panduan Instalasi</a></li>
+      <li><a href="#usage">8. Cara Penggunaan</a></li>
+      <li><a href="#troubleshooting">9. Troubleshooting & FAQ</a></li>
+      <li><a href="#git-guide">10. Panduan Git & GitHub</a></li>
+    </ul>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="content">
+
+    <!-- Hero Banner -->
+    <div class="hero-banner">
+      <h1>Dokumentasi Pertamina S&D Autofill Assistant</h1>
+      <p>Sistem otomatisasi penginputan data Penyaluran RSD Pertamina Patra Niaga berbasis Chrome & Edge Extension Manifest V3 dengan arsitektur OOP dan State Machine.</p>
+      <div class="badge-bar">
+        <span class="badge blue">Manifest V3</span>
+        <span class="badge green">OOP Architecture</span>
+        <span class="badge red">S&D One Portal Compatible</span>
+      </div>
+    </div>
+
+    <!-- Section 1: Overview -->
+    <section id="overview">
+      <h2>1. Gambaran Umum Proyek</h2>
+      <p><strong>Pertamina S&D Autofill Assistant</strong> dirancang untuk mempercepat dan menghilangkan potensi kesalahan manusia (*human error*) dalam proses penginputan data transaksi Penyaluran Mobil Tangki di portal web <strong>S&D One (Supply & Distribution)</strong> (<code>https://sndone.patraniaga.com/</code>).</p>
+      
+      <div class="card-grid">
+        <div class="card">
+          <h4> Parsing Excel Masal</h4>
+          <p>Membaca data ratusan transaksi secara instan dari berkas Excel (.xlsx) termasuk LO dan Segel ganda.</p>
+        </div>
+        <div class="card">
+          <h4> Dual-Tank In-Line Blending</h4>
+          <p>Dukungan otomatisasi pengisian tangki ganda untuk produk campuran seperti Biosolar B50 (Solar + FAME) & Dexlite.</p>
+        </div>
+        <div class="card">
+          <h4> Select2 Helper Cerdas</h4>
+          <p>Pencarian opsi dropdown jQuery Select2 berbasis fuzzy matching (exact, serial TK-xx, keyword, fallback).</p>
+        </div>
+        <div class="card">
+          <h4> Monitoring Real-Time</h4>
+          <p>Terminal log interaktif dan progress bar pengerjaan transaksi secara langsung dari popup ekstensi.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Section 2: Architecture -->
+    <section id="architecture">
+      <h2>2. Arsitektur & State Machine Flow</h2>
+      <p>Sistem menggunakan alur state linier yang menyimpan progres di <code>chrome.storage.local</code> sehingga aman dari <i>page reload</i> atau navigasi antar-halaman web.</p>
+      
+      <pre><code>[ File Excel .xlsx ] ──> [ ExcelParser ] ──> [ chrome.storage.local ]
+                                                    │
+                                                    ▼
+                                    [ AutofillEngine (Orchestrator) ]
+                                                    │
+     ┌──────────────────────┬───────────────────────┼───────────────────────┐
+     ▼                      ▼                       ▼                       ▼
+[ ListPageHandler ]  [ PenyaluranAddHandler ] [ ProcessBridgeHandler ] [ Stage Handlers ]
+ - Cek draft/complete  - Register penyaluran   - Routing sub-aktivitas  - GateInPageHandler
+ - Skip if completed   - Isi Moda & SPBU                                - PengisianPageHandler
+                                                                        - GateOutPageHandler</code></pre>
+    </section>
+
+    <!-- Section 3: File Structure -->
+    <section id="files">
+      <h2>3. Struktur File Proyek</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Nama File</th>
+            <th>Tipe</th>
+            <th>Fungsi & Peranan Utama</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>manifest.json</code></td>
+            <td>JSON Manifest V3</td>
+            <td>Konfigurasi ekstensi, izin <code>storage</code>, host permissions <code>sndone.patraniaga.com</code>.</td>
+          </tr>
+          <tr>
+            <td><code>popup.html</code></td>
+            <td>HTML Interface</td>
+            <td>Antarmuka Control Panel (Upload, Gauge, Buttons, Logs Terminal) & Tab Setting Tanki.</td>
+          </tr>
+          <tr>
+            <td><code>popup.css</code></td>
+            <td>Vanilla CSS</td>
+            <td>Desain UI modern Pertamina corporate theme (Dark Mode & accent colors).</td>
+          </tr>
+          <tr>
+            <td><code>popup.js</code></td>
+            <td>JavaScript (OOP)</td>
+            <td>Controller popup: <code>LoggerUI</code>, <code>DateFormatter</code>, <code>TankConfigManager</code>, <code>ExcelParser</code>, <code>PopupAppManager</code>.</td>
+          </tr>
+          <tr>
+            <td><code>content.js</code></td>
+            <td>JavaScript (OOP)</td>
+            <td>Engine otomasi di portal: <code>Select2Helper</code>, <code>DOMUtils</code>, <code>BasePageHandler</code>, 6 Page Handlers, <code>AutofillEngine</code>.</td>
+          </tr>
+          <tr>
+            <td><code>xlsx.full.min.js</code></td>
+            <td>JS Library</td>
+            <td>Library SheetJS lokal untuk membaca binary file Excel secara offline tanpa CDN.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Section 4: Modules -->
+    <section id="modules">
+      <h2>4. Penjelasan Modul & Kelas OOP (content.js & popup.js)</h2>
+      
+      <h3>4.1 Engine Automation (content.js)</h3>
+      <ul>
+        <li><code>Select2Helper</code>: Menangani pembukaan dropdown Select2 dan pemilihan opsi secara presisi berdasarkan kecocokan teks, digit nomor tangki (misal <code>15</code> match ke <code>TK-15</code>), maupun kata kunci.</li>
+        <li><code>DOMUtils</code>: Pembantu manipulasi DOM seperti ekstraksi NIP driver dari <code>Nama [ID]</code>, simulasi MouseEvent asli (<code>mousedown</code>, <code>mouseup</code>, <code>click</code>), dan verifikasi status <code>Completed</code>.</li>
+        <li><code>ListPageHandler</code>: Mengelola daftar penyaluran di halaman utama.
+          <ul>
+            <li>Menggunakan perbandingan Nopol presisi (<code>DOMUtils.isRowMatchNopol</code>) yang mengabaikan spasi/format (misal <code>DB 8015 RK</code> match ke <code>DB8015RK</code>).</li>
+            <li>Hanya memilih baris yang <b>persis cocok</b> dengan plat nomor target Excel.</li>
+            <li>Menghapus total fallback acak yang sebelumnya bisa mengklik baris truk lain. Jika Nopol target tidak ada di tabel, bot langsung menekan tombol <b><code>+ Add New</code></b> (<code>#btn-add-penyaluran</code>) untuk membuat pendaftaran baru.</li>
+            <li>Melompati (skip) baris Excel secara otomatis jika transaksi untuk Nopol tersebut sudah berstatus <i>Complete</i>.</li>
+          </ul>
+        </li>
+        <li><code>PenyaluranAddPageHandler</code>: Pengisian otomatis form awal penyaluran (Moda: <code>TRUCK</code>, Tujuan: <code>SPBU</code>, Nomor Polisi).</li>
+        <li><code>ProcessBridgePageHandler</code>: Jembatan navigasi stepper yang secara cerdas memilih dan mengklik tautan sub-aktivitas (<i>Gate In</i>, <i>Pengisian</i>, atau <i>Gate Out</i>).</li>
+        <li><code>GateInPageHandler</code>: Pengisian MT Gate In (AMT Driver & Waktu Gate In). Mampu menangani mode View ke mode Edit (<code>#btn-editing</code>), simpan draf (<code>#btn-draft</code>), dan submit final (<code>#btn-completed</code> / <code>#btn-completedEdit</code>).</li>
+        <li><code>PengisianPageHandler</code>: Pengisian multi-LO via dialog modal. Mengatur dual-tank In-Line Blending, nomor tangki, Bay Number, No Meter, Volume Liter, perhitungan string kompartemen (contoh: <code>1.2</code>), serta validasi Meter Awal/Akhir otomatis.</li>
+        <li><code>GateOutPageHandler</code>: Pengisian nomor segel ganda dan Waktu Gate Out, simpan draf, dan submit transaksi akhir.</li>
+      </ul>
+    </section>
+
+    <!-- Section 5: Excel Format -->
+    <section id="excel-format">
+      <h2>5. Format Data Input Excel (snd1.xlsx / snd2.xlsx)</h2>
+      <p>File Excel yang di-upload harus memuat header kolom sebagai berikut:</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Header Excel</th>
+            <th>Property JSON</th>
+            <th>Contoh Isi Data</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>No. Polisi</b></td>
+            <td><code>nopol</code></td>
+            <td><code>B 9123 TEK</code></td>
+          </tr>
+          <tr>
+            <td><b>Supir aktual</b></td>
+            <td><code>supir</code></td>
+            <td><code>301928 - BUDI SANTOSO</code></td>
+          </tr>
+          <tr>
+            <td><b>Total volume[kL]</b></td>
+            <td><code>volume</code></td>
+            <td><code>16</code> (dalam kL)</td>
+          </tr>
+          <tr>
+            <td><b>Produk</b></td>
+            <td><code>produk</code></td>
+            <td><code>PERTALITE</code>, <code>BIOSOLAR B50</code>, <code>DEXLITE</code></td>
+          </tr>
+          <tr>
+            <td><b>Tanggal Shipment</b></td>
+            <td><code>gateInTime</code></td>
+            <td><code>2026-08-05 08:30:00</code></td>
+          </tr>
+          <tr>
+            <td><b>Gate Out (State 80)</b></td>
+            <td><code>gateOutTime</code></td>
+            <td><code>2026-08-05 10:15:00</code></td>
+          </tr>
+          <tr>
+            <td><b>LO-KL</b></td>
+            <td><code>loList</code></td>
+            <td><code>802938102, 802938103</code> (pisahkan koma)</td>
+          </tr>
+          <tr>
+            <td><b>Segel</b></td>
+            <td><code>segelList</code></td>
+            <td><code>SGL-001, SGL-002, SGL-003</code> (pisahkan koma)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Section 6: Tanks Config -->
+    <section id="tanks-config">
+      <h2>6. Pengaturan Tangki & In-Line Blending</h2>
+      <p>Di tab <strong>Setting Tanki</strong> pada popup ekstensi, pengguna dapat menyesuaikan nomor tangki aktif harian:</p>
+
+      <div class="callout success">
+        <div class="callout-title"> In-Line Blending Dual Tank</div>
+        <p>Untuk produk <strong>BIOSOLAR B50</strong> dan <strong>DEXLITE</strong>, sistem akan otomatis mencentang opsi In-Line Blending pada modal pengisian dan memilih <strong>Tanki 1 (Solar/Main)</strong> dan <strong>Tanki 2 (FAME/Secondary)</strong> secara terpisah!</p>
+      </div>
+    </section>
+
+    <!-- Section 7: Installation -->
+    <section id="installation">
+      <h2>7. Panduan Instalasi Browser</h2>
+      <ol>
+        <li>Buka browser Microsoft Edge (<code>edge://extensions/</code>) atau Google Chrome (<code>chrome://extensions/</code>).</li>
+        <li>Aktifkan <strong>Developer Mode</strong> (Mode Pengembang) di bagian pojok antarmuka browser.</li>
+        <li>Klik tombol <strong>Load unpacked</strong> (Muat ekstensi yang tidak dikemas).</li>
+        <li>Pilih folder proyek: <code>C:\Users\Josua\Downloads\Magang_Pertamina\Project Autofill RSD</code>.</li>
+        <li>Ekstensi <strong>Pertamina S&D Autofill Assistant</strong> siap digunakan!</li>
+      </ol>
+    </section>
+
+    <!-- Section 8: Usage -->
+    <section id="usage">
+      <h2>8. Cara Penggunaan Langkah demi Langkah</h2>
+      <ol>
+        <li>Buka dan login ke portal <strong>S&D One Pertamina</strong> (<code>https://sndone.patraniaga.com/</code>).</li>
+        <li>Klik ikon ekstensi <strong>S&D Autofill</strong> di toolbar browser.</li>
+        <li>Buka tab <strong>Setting Tanki</strong> untuk menyesuaikan nomor tangki hari ini.</li>
+        <li>Buka tab <strong>Control Panel</strong>, upload file <code>snd1.xlsx</code> via Drag & Drop.</li>
+        <li>Klik tombol <strong>Mulai Autofill</strong>. Pantau pergerakan bot pada log terminal popup.</li>
+      </ol>
+    </section>
+
+    <!-- Section 9: Troubleshooting -->
+    <section id="troubleshooting">
+      <h2>9. Troubleshooting & Penanganan Kendala</h2>
+      
+      <div class="callout warning">
+        <div class="callout-title"> Peringatan Tab Aktif</div>
+        <p>Jika muncul log <i>"Koneksi ke tab aktif: Harap pastikan tab aktif berada di portal S&D..."</i>, pastikan tab browser yang sedang terbuka dan aktif di layar komputer Anda adalah halaman portal <code>sndone.patraniaga.com</code>.</p>
+      </div>
+
+      <div class="callout">
+        <div class="callout-title"> Reset Antrean Transaksi</div>
+        <p>Jika ingin menghentikan pengerjaan atau meng-upload file Excel baru, tekan tombol <strong>Hentikan</strong> kemudian klik <strong>Reset Data</strong> untuk membersihkan storage ekstensi.</p>
+      </div>
+    </section>
+
+    <!-- Section 10: Git & GitHub Guide -->
+    <section id="git-guide">
+      <h2>10. Panduan Backup Git & GitHub (Version Control)</h2>
+      <p>Untuk menghindari penggunaan backup berkas ZIP yang memakan tempat, gunakan **Git** dan **GitHub** untuk menyimpan setiap titik perkembangan fitur yang berhasil dan kembali ke versi lama jika terjadi kesalahan.</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h4>1. Inisialisasi Project (Awal)</h4>
+          <pre><code>git init
+git branch -M main
+git remote add origin https://github.com/USERNAME/REPO.git</code></pre>
+        </div>
+        <div class="card">
+          <h4>2. Backup Rutin Fitur Baru</h4>
+          <pre><code>git add .
+git commit -m "Deskripsi fitur"
+git push -u origin main</code></pre>
+        </div>
+        <div class="card">
+          <h4>3. Batal Edit / Restorasi Versi</h4>
+          <pre><code># Batal edit sebelum commit:
+git restore .
+
+# Reset ke commit lama:
+git reset --hard &lt;COMMIT_HASH&gt;</code></pre>
+        </div>
+      </div>
+
+      <div class="callout success">
+        <div class="callout-title"> Panduan Lengkap Git</div>
+        <p>Panduan langkah demi langkah yang lebih detil telah tersedia di berkas <code>PANDUAN_GIT_GITHUB.md</code> di folder proyek.</p>
+      </div>
+    </section>
+
+    <footer>
+      <p>&copy; 2026 Pertamina Patra Niaga RSD - Project Autofill Assistant. Seluruh Hak Cipta Dilindungi.</p>
+    </footer>
+
+  </main>
+
+  <script>
+    // Smooth scrolling & active nav highlight
+    document.querySelectorAll('.nav-menu a').forEach(anchor => {
+      anchor.addEventListener('click', function(e) {
+        e.preventDefault();
+        document.querySelectorAll('.nav-menu a').forEach(a => a.classList.remove('active'));
+        this.classList.add('active');
+        const targetId = this.getAttribute('href');
+        document.querySelector(targetId).scrollIntoView({
+          behavior: 'smooth'
+        });
+      });
+    });
+  </script>
+</body>
+</html>

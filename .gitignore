@@ -1,0 +1,8 @@
+# File & folder yang diabaikan dari Git
+node_modules/
+.tmp/
+*.log
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

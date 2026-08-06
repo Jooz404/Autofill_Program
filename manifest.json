@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Pertamina S&D Autofill Assistant",
+  "version": "1.0",
+  "description": "Sistem otomatisasi penginputan data Penyaluran RSD Pertamina Patra Niaga.",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://sndone.patraniaga.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.svg"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://sndone.patraniaga.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ]
+}

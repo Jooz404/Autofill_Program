@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pertamina S&D Autofill</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <svg class="header-logo" width="24" height="24" viewBox="0 0 128 128">
+          <rect x="12" y="12" width="104" height="104" rx="28" fill="#14171a"/>
+          <path d="M 64,24 A 40,40 0 1,1 24,64" fill="none" stroke="#007bff" stroke-width="8" stroke-linecap="round"/>
+          <path d="M 64,104 A 40,40 0 0,1 104,64" fill="none" stroke="#8dc63f" stroke-width="8" stroke-linecap="round"/>
+          <path d="M 104,64 A 40,40 0 0,1 64,24" fill="none" stroke="#ff4b5c" stroke-width="8" stroke-linecap="round"/>
+          <polygon points="56,50 80,64 56,78" fill="#8dc63f"/>
+        </svg>
+        <div class="brand">
+          <h1>S&amp;D Autofill</h1>
+          <p>Pertamina Patra Niaga RSD</p>
+        </div>
+      </div>
+      <div class="edge-indicator">
+        <span>MS Edge</span>
+        <div class="pulse-dot"></div>
+      </div>
+    </header>
+
+    <!-- Nav Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="control">Control Panel</button>
+      <button class="tab-btn" data-tab="tanks">Setting Tanki</button>
+    </nav>
+
+    <!-- Content Sections -->
+    <main class="app-content">
+      <!-- Section 1: Control Panel -->
+      <section id="tab-control" class="tab-section active">
+        <!-- File Upload Area -->
+        <div class="card file-upload-card">
+          <label for="excel-file" class="dropzone" id="dropzone">
+            <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span class="dropzone-text">Pilih atau Seret Berkas Excel (.xlsx)</span>
+            <span class="file-name" id="file-name-label">Belum ada file terpilih</span>
+            <input type="file" id="excel-file" accept=".xlsx" style="display: none;">
+          </label>
+        </div>
+
+        <!-- Automation Controls -->
+        <div class="card controls-card">
+          <div class="status-gaugeGrid">
+            <div class="gauge-item">
+              <span class="gauge-label">Status</span>
+              <span class="gauge-val status-badge idle" id="status-text">Idle</span>
+            </div>
+            <div class="gauge-item">
+              <span class="gauge-label">Baris Aktif</span>
+              <span class="gauge-val" id="row-progress">0 / 0</span>
+            </div>
+          </div>
+
+          <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+          </div>
+
+          <div class="action-buttons">
+            <button class="btn btn-start" id="btn-start" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+              Mulai Autofill
+            </button>
+            <button class="btn btn-secondary" id="btn-stop" disabled style="display: none;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+              Hentikan
+            </button>
+            <button class="btn btn-secondary" id="btn-reset">
+              Reset Data
+            </button>
+          </div>
+        </div>
+
+        <!-- Terminal-like Log Panel -->
+        <div class="card log-card">
+          <div class="card-header">
+            <h3>Aktivitas Logs</h3>
+            <span class="clear-log" id="clear-log-btn">Clear</span>
+          </div>
+          <div class="log-terminal" id="log-terminal">
+            <div class="log-entry system">[SYSTEM] Aplikasi siap. Silakan upload file data Excel 'snd1.xlsx'.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 2: Tank Configuration -->
+      <section id="tab-tanks" class="tab-section">
+        <div class="card config-card">
+          <div class="card-header" style="margin-bottom: 12px;">
+            <h3>Pengaturan Nomor Tanki</h3>
+            <span class="save-status" id="save-status">Tersimpan otomatis</span>
+          </div>
+          <p class="config-desc">Sesuaikan nomor tangki yang aktif hari ini berdasarkan jadwal pengisian (Filling Shed).</p>
+
+          <form id="tank-form" class="tank-form">
+            <!-- Pertalite -->
+            <div class="form-row">
+              <div class="form-group">
+                <label for="tank-pertalite">PERTALITE (Tk. 1)</label>
+                <input type="text" id="tank-pertalite" placeholder="contoh: 11" class="form-input">
+              </div>
+            </div>
+
+            <!-- Pertamax -->
+            <div class="form-row">
+              <div class="form-group">
+                <label for="tank-pertamax">PERTAMAX (Tk. 1)</label>
+                <input type="text" id="tank-pertamax" placeholder="contoh: 3" class="form-input">
+              </div>
+            </div>
+
+            <!-- Biosolar B50 (Inline Blending: Solar + Fame) -->
+            <div class="form-category-header">IN LINE BLENDING (Dual Tanki)</div>
+            
+            <div class="form-row split">
+              <div class="form-group">
+                <label for="tank-solar-1">BIOSOLAR B50 (Tanki 1 - Solar)</label>
+                <input type="text" id="tank-solar-1" placeholder="contoh: 15" class="form-input">
+              </div>
+              <div class="form-group">
+                <label for="tank-solar-2">BIOSOLAR B50 (Tanki 2 - FAME)</label>
+                <input type="text" id="tank-solar-2" placeholder="contoh: 8" class="form-input">
+              </div>
+            </div>
+
+            <!-- Dexlite -->
+            <div class="form-row split">
+              <div class="form-group">
+                <label for="tank-dexlite-1">DEXLITE (Tanki 1)</label>
+                <input type="text" id="tank-dexlite-1" placeholder="contoh: 15" class="form-input">
+              </div>
+              <div class="form-group">
+                <label for="tank-dexlite-2">DEXLITE (Tanki 2)</label>
+                <input type="text" id="tank-dexlite-2" placeholder="contoh: 8" class="form-input">
+              </div>
+            </div>
+
+            <div class="form-category-header">Lainnya</div>
+
+            <!-- Pertadex / Pertamax Turbo / Avtur -->
+            <div class="form-row inline-three">
+              <div class="form-group">
+                <label for="tank-pertadex">PERTADEX</label>
+                <input type="text" id="tank-pertadex" placeholder="17" class="form-input">
+              </div>
+              <div class="form-group">
+                <label for="tank-turbo">PERTAMAX TURBO</label>
+                <input type="text" id="tank-turbo" placeholder="19" class="form-input">
+              </div>
+              <div class="form-group">
+                <label for="tank-avtur">AVTUR</label>
+                <input type="text" id="tank-avtur" placeholder="6" class="form-input">
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Load xlsx library locally -->
+  <script src="xlsx.full.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
