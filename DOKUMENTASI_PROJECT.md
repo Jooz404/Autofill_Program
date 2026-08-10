@@ -114,8 +114,9 @@ Merupakan inti dari fungsi otomasi web portal, dibangun dengan struktur kelas OO
 
 1. **`Logger`**: Mengirim log dari content script ke UI Popup via `chrome.runtime.sendMessage`.
 2. **`Select2Helper`**: Penangan elemen UI jQuery Select2 & Raw `<select>`.
-   - Mengatasi dropdown kustom yang tidak bisa diisi secara teks biasa.
-   - Algoritma pencarian bertingkat: *Exact Match* ➔ *Includes Match* ➔ *Digit/Tank Padding (`TK-15` / `T015`)* ➔ *Keyword Match* ➔ *Fallback*.
+   - Mengidentifikasi container `select2-container` secara fleksibel pada Select2 V4.
+   - Mendukung pencocokan otomatis format nomor tangki (seperti `15` atau `8` yang secara otomatis dicocokkan ke `T015 - TK-15`, `T008 - TK-08`).
+   - Algoritma pencarian bertingkat: *Exact Match* ➔ *Tank & Digit Matching (`TK-08` / `T008` / `TK-15` / `T015`)* ➔ *Includes Match* ➔ *Keyword Match* ➔ *Fallback*.
 3. **`DOMUtils`**: Utility untuk ekstraksi NIP/ID supir dari format `Nama [ID]`, pemeriksaan visibilitas elemen, simulasi event klik MouseEvent asli, deteksi status transaksi (`Completed`/`Selesai`), dan navigasi antar halaman.
 4. **`BasePageHandler`**: Kelas abstrak dasar untuk semua modul handler halaman.
 5. **`ListPageHandler`**: Mengelola daftar transaksi penyaluran di halaman utama.
@@ -127,10 +128,12 @@ Merupakan inti dari fungsi otomasi web portal, dibangun dengan struktur kelas OO
 7. **`ProcessBridgePageHandler`**: Menavigasi link sub-aktivitas berdasarkan tahapan transaksi (*Gate In*, *Pengisian*, *Gate Out*).
 8. **`GateInPageHandler`**: Otomatis mengisi formulir MT Gate In (Driver AMT & Waktu Gate In), menangani perpindahan mode View ke Mode Edit (`#btn-editing`), menyimpan draf (`#btn-draft`), dan melakukan submit akhir (`#btn-completedEdit`).
 9. **`PengisianPageHandler`**: Mengelola dialog modal pengisian multi-LO.
+   - Menggunakan urutan pengisian terverifikasi: Nomor LO -> In-Line Blending Checkbox -> Tangki 1 (jeda AJAX 700ms) -> Tangki 2 (jeda AJAX 700ms) -> Pilih Produk Utama (terakhir) -> Volume & Kompartemen.
    - Mendeteksi produk *In-Line Blending* (Biosolar B50 / Dexlite) dan mengaktifkan checkbox dual-tank.
-   - Memilih nomor tangki 1 dan tangki 2.
-   - Mengisi Bay Number, No Meter, Volume (Liter), dan menghitung kompartemen (contoh: `1.2`).
-   - Memverifikasi angka Meter Awal & Meter Akhir otomatis dari sistem sebelum menyimpan detail modal dan melakukan submit final.
+   - Menggunakan pencocokan kode produk presisi (seperti `A040900219` untuk Biosolar B50) melalui API jQuery Select2 `.val().trigger('change')` guna menghindari kesalahan pemilihan produk lain (seperti `BIOFAME` atau `SOLAR` biasa).
+   - Memiliki proteksi `setProdukAndVerify` yang memantau listener AJAX portal dan secara otomatis memaksa ulang nilai produk jika terdeteksi perubahan tak terduga.
+   - Mengisi Bay Number, No Meter, Volume (Liter), dan menghitung kompartemen (contoh: `1.2.3`).
+   - Menyimpan detail modal secara otomatis dan mengeksekusi submit final pengisian.
 10. **`GateOutPageHandler`**: Mengisi nomor segel (penggabungan list segel) dan Waktu Gate Out, menyimpan draf, serta mengeksekusi submit transaksi final hingga beralih ke baris Excel berikutnya.
 11. **`AutofillEngine`**: Kelas orchestrator utama yang membaca URL path dan elemen DOM aktif untuk mengarahkan ke `PageHandler` yang sesuai.
 

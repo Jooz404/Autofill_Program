@@ -472,7 +472,7 @@
       
       <h3>4.1 Engine Automation (content.js)</h3>
       <ul>
-        <li><code>Select2Helper</code>: Menangani pembukaan dropdown Select2 dan pemilihan opsi secara presisi berdasarkan kecocokan teks, digit nomor tangki (misal <code>15</code> match ke <code>TK-15</code>), maupun kata kunci.</li>
+        <li><code>Select2Helper</code>: Menangani pembukaan dropdown Select2 dan pemilihan opsi secara presisi. Mengenali container <code>select2-container</code> Select2 V4 dan mencocokkan format nomor tangki dinamis (seperti <code>8</code> atau <code>15</code> yang secara otomatis dicocokkan ke <code>T008 - TK-08</code> dan <code>T015 - TK-15</code>).</li>
         <li><code>DOMUtils</code>: Pembantu manipulasi DOM seperti ekstraksi NIP driver dari <code>Nama [ID]</code>, simulasi MouseEvent asli (<code>mousedown</code>, <code>mouseup</code>, <code>click</code>), dan verifikasi status <code>Completed</code>.</li>
         <li><code>ListPageHandler</code>: Mengelola daftar penyaluran di halaman utama.
           <ul>

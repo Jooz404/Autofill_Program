@@ -19,202 +19,239 @@ class Logger {
 
 // 2. Select2 & Dropdown Interaction Helper Class
 class Select2Helper {
-  static activeSelections = new Set();
-
-  static openSelect2AndChoose(selectId, optionText) {
+  /**
+   * Membuka dropdown Select2 untuk sebuah <select> dan memilih opsi
+   * yang cocok dengan optionText (matching berbasis teks/angka tangki).
+   *
+   * @param {HTMLElement} select - elemen <select> asli (native, biasanya hidden)
+   * @param {string} optionText  - teks/kode yang ingin dicocokkan (mis. "15", "TK-01")
+   * @returns {Promise<void>}
+   */
+  static setSelectByValueOrText(select, optionText) {
     return new Promise((resolve, reject) => {
-      const select = document.getElementById(selectId);
-      if (!select) return reject('Select tidak ditemukan: ' + selectId);
-
-      const select2Container = select.nextElementSibling || select.parentElement.querySelector('.select2-container');
-      if (!select2Container || !select2Container.classList.contains('select2')) {
-        return reject('Container Select2 tidak ditemukan');
+      if (!select) {
+        return reject('Elemen select tidak valid');
       }
 
-      if (Select2Helper.activeSelections.has(selectId)) {
-        return resolve(false);
+      if (!select.id) {
+        select.id = 'autofill-sel-' + Math.floor(Math.random() * 100000);
       }
-      Select2Helper.activeSelections.add(selectId);
 
-      const cleanUpAndResolve = (val) => {
-        Select2Helper.activeSelections.delete(selectId);
-        resolve(val);
-      };
+      const selectId = select.id;
+      const targetClean = String(optionText).trim();
+      const targetUpper = targetClean.toUpperCase();
 
-      const cleanUpAndReject = (err) => {
-        Select2Helper.activeSelections.delete(selectId);
-        reject(err);
-      };
+      // 1. Coba pencocokan langsung pada elemen native <option> terlebih dahulu
+      const nativeOpts = Array.from(select.options);
+      let matchedOpt = nativeOpts.find(o => o.value === targetClean || o.text.trim().toUpperCase() === targetUpper);
 
-      const selectionBox = select2Container.querySelector('.select2-selection');
-      if (!selectionBox) return cleanUpAndReject('.select2-selection tidak ditemukan');
+      // Pencocokan presisi Biosolar B50 (A040900219)
+      if (!matchedOpt && (targetUpper.includes('BIOSOLAR') || targetUpper.includes('219'))) {
+        matchedOpt = nativeOpts.find(o => (o.value === 'A040900219' || o.text.toUpperCase().includes('A040900219') || o.text.toUpperCase().includes('BIOSOLAR B50')) && !o.text.toUpperCase().includes('BIOFAME'));
+      }
 
-      // PENTING: Hanya klik untuk membuka jika dropdown BELUM terbuka
+      // Pencocokan berbasis angka tangki (TK-05, T005, TK-15, dst)
+      if (!matchedOpt) {
+        const numMatch = targetClean.match(/\d+/);
+        if (numMatch) {
+          const num = parseInt(numMatch[0], 10);
+          const pad2 = num.toString().padStart(2, '0');
+          const pad3 = num.toString().padStart(3, '0');
+          matchedOpt = nativeOpts.find(o => {
+            const txt = o.text.toUpperCase();
+            return txt.includes(`TK-${pad2}`) || txt.includes(`TK-${num}`) || txt.includes(`T${pad3}`) || txt.includes(`T${pad2}`) || txt.includes(`TK ${pad2}`) || txt.includes(`TK ${num}`);
+          });
+        }
+      }
+
+      if (!matchedOpt) {
+        matchedOpt = nativeOpts.find(o => o.text.toUpperCase().includes(targetUpper));
+      }
+
+      if (matchedOpt) {
+        select.value = matchedOpt.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Jika jQuery ($) tersedia
+        if (typeof $ !== 'undefined' || typeof window.jQuery !== 'undefined') {
+          try {
+            const jq = window.$ || window.jQuery;
+            jq(select).val(matchedOpt.value).trigger('change');
+          } catch (e) { }
+        }
+
+        // Update teks visual container Select2
+        let select2Container = select.nextElementSibling;
+        if (!select2Container || !select2Container.className || !select2Container.className.includes('select2')) {
+          select2Container = select.parentElement ? select.parentElement.querySelector('.select2-container, .select2') : null;
+        }
+
+        if (select2Container) {
+          const renderedSpan = select2Container.querySelector('.select2-selection__rendered');
+          if (renderedSpan) {
+            renderedSpan.textContent = matchedOpt.text;
+            renderedSpan.title = matchedOpt.text;
+          }
+        }
+        return resolve(true);
+      }
+
+      // 2. Fallback Simulasi Klik DOM Select2 jika native matching belum resolve
+      let select2Container = select.nextElementSibling;
+      if (!select2Container || !select2Container.className || !select2Container.className.includes('select2')) {
+        select2Container = select.parentElement
+          ? select.parentElement.querySelector('.select2-container, .select2')
+          : null;
+      }
+      if (!select2Container) {
+        return reject('Container Select2 tidak ditemukan untuk #' + selectId);
+      }
+
+      const selectionBox =
+        select2Container.querySelector('.select2-selection') ||
+        select2Container.querySelector('.select2-selection__rendered') ||
+        select2Container;
+
+      // 2. Cek status buka HANYA pada container milik select ini (tidak query global)
       const isOpen = select2Container.classList.contains('select2-container--open');
-      if (!isOpen) {
+
+      const openDropdown = () => {
+        if (isOpen) return;
         ['mousedown', 'mouseup', 'click'].forEach(type => {
           selectionBox.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
         });
-      }
+        if (typeof selectionBox.click === 'function') {
+          selectionBox.click();
+        }
+
+        // Ketik ke input pencarian Select2 jika ada
+        setTimeout(() => {
+          const searchInput = document.querySelector('.select2-container--open .select2-search__field, input.select2-search__field');
+          if (searchInput && optionText) {
+            searchInput.value = optionText;
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+            searchInput.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+          }
+        }, 100);
+      };
+
+      openDropdown();
+
+      // 3. Cari ID hasil dropdown yang SPESIFIK untuk select ini.
+      //    Pola dari DOM: <ul id="select2-<selectId>-results">
+      //    Select2 kadang menambah suffix acak di beberapa versi/instance,
+      //    jadi kita coba exact match dulu, baru fallback prefix match.
+      const findResultsContainer = () => {
+        const exact = document.getElementById(`select2-${selectId}-results`);
+        if (exact) return exact;
+
+        // fallback: cari ul yang id-nya mengandung selectId dan role=listbox
+        const candidates = document.querySelectorAll(`ul[id*="${selectId}"][role="listbox"]`);
+        return candidates.length ? candidates[0] : null;
+      };
 
       const start = Date.now();
+      const timeoutMs = 3000;
+      const pollInterval = 150;
+
+      const cleanUpAndResolve = () => resolve(true);
+      const cleanUpAndReject = (msg) => reject(msg);
+
       const tryFind = () => {
-        const options = document.querySelectorAll('.select2-results__option');
-        let target = null;
-        const targetClean = optionText.trim();
-        const targetUpper = targetClean.toUpperCase();
+        const resultsContainer = findResultsContainer();
+
+        if (!resultsContainer) {
+          if (Date.now() - start < timeoutMs) {
+            return setTimeout(tryFind, pollInterval);
+          }
+          return cleanUpAndReject(`Dropdown results untuk #${selectId} tidak pernah muncul`);
+        }
+
+        // Scope pencarian opsi HANYA di dalam container milik select ini
+        const options = resultsContainer.querySelectorAll('li[role="option"]');
+        const targetClean = String(optionText).trim();
 
         const realOpts = Array.from(options).filter(o =>
           !o.className.includes('loading') &&
           !o.textContent.includes('Searching') &&
-          o.textContent.trim() !== "" &&
+          o.textContent.trim() !== '' &&
           !o.textContent.includes('-- Tangki --') &&
           !o.textContent.includes('-- Produk --')
         );
 
-        // 1. Exact match
-        for (let opt of realOpts) {
-          if (opt.textContent.trim().toUpperCase() === targetUpper) {
-            target = opt;
-            break;
-          }
-        }
+        let target = null;
 
-        // 2. Includes match
+        // 1. Matching exact text dulu (kalau optionText memang full label)
+        target = realOpts.find(o => o.textContent.trim().toUpperCase() === targetClean.toUpperCase()) || null;
+
+        // 2. Matching spesifik produk (mis. A040900219 - BIOSOLAR B50 vs A040900014 - BIOFAME)
         if (!target) {
-          for (let opt of realOpts) {
-            if (opt.textContent.trim().toUpperCase().includes(targetUpper)) {
-              target = opt;
-              break;
-            }
+          const isBiosolarSearch = targetClean.toUpperCase().includes('BIOSOLAR') || targetClean.includes('219');
+          if (isBiosolarSearch) {
+            target = realOpts.find(opt => {
+              const txtUpper = opt.textContent.toUpperCase();
+              return (txtUpper.includes('BIOSOLAR') || txtUpper.includes('A040900219') || txtUpper.includes('B50')) && !txtUpper.includes('BIOFAME');
+            }) || null;
           }
         }
 
-        // 3. Digit/Tank match (misal search '1' atau '15' pencocokan ke TK-01, T001, TK-15, T015)
-        if (!target && /^\d+$/.test(targetClean)) {
-          const paddedNum = targetClean.padStart(2, '0');
-          for (let opt of realOpts) {
-            const txtUpper = opt.textContent.toUpperCase();
-            if (txtUpper.includes(`TK-${paddedNum}`) || txtUpper.includes(`TK-${targetClean}`) ||
-                txtUpper.includes(`T${paddedNum}`) || txtUpper.includes(`T${targetClean}`) ||
-                txtUpper.includes(`-${paddedNum}-`) || txtUpper.includes(`-${targetClean}-`)) {
-              target = opt;
-              break;
-            }
-          }
-        }
-
-        // 4. Keyword match
+        // 3. Matching berbasis angka tangki (TK-01, T001, dst)
         if (!target) {
-          for (let opt of realOpts) {
-            const optTextUpper = opt.textContent.trim().toUpperCase();
-            let isMatch = false;
-            if (targetUpper === 'TRUCK' && (optTextUpper.includes('JALAN') || optTextUpper.includes('MOBIL') || optTextUpper.includes('TANK'))) {
-              isMatch = true;
-            } else if (targetUpper === 'SPBU' && (optTextUpper.includes('SPBU') || optTextUpper.includes('STASIUN') || optTextUpper.includes('RETAIL'))) {
-              isMatch = true;
-            }
-            if (isMatch) {
-              target = opt;
-              break;
-            }
+          const numMatch = targetClean.match(/\d+/);
+          if (numMatch) {
+            const num = parseInt(numMatch[0], 10);
+            const pad2 = num.toString().padStart(2, '0');
+            const pad3 = num.toString().padStart(3, '0');
+
+            target = realOpts.find(opt => {
+              const txtUpper = opt.textContent.toUpperCase();
+              return (
+                txtUpper.includes(`TK-${pad2}`) || txtUpper.includes(`TK-${num}`) ||
+                txtUpper.includes(`T${pad3}`) || txtUpper.includes(`T${pad2}`) ||
+                txtUpper.includes(`TK ${pad2}`) || txtUpper.includes(`TK ${num}`)
+              );
+            }) || null;
           }
         }
 
-        // 5. Fallback ke opsi pertama yang valid
-        if (!target && realOpts.length > 0) {
-          target = realOpts[0];
-          Logger.log(`Tidak ada kecocokan persis untuk "${optionText}". Memilih opsi Select2 pertama: "${target.textContent.trim()}"`, 'warn');
+        // 4. Fallback includes match (dengan memprioritaskan yang persis mengandung frasa kata)
+        if (!target) {
+          target = realOpts.find(opt => opt.textContent.toUpperCase().includes(targetClean.toUpperCase())) || null;
         }
 
         if (target) {
-          ['mouseenter', 'mousedown', 'mouseup', 'click'].forEach(type => {
+          ['mouseenter', 'mouseover', 'mousedown', 'mouseup', 'click'].forEach(type => {
             target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true }));
           });
-          select.dispatchEvent(new Event('change', { bubbles: true }));
-          cleanUpAndResolve(true);
-        } else if (Date.now() - start < 3000) {
-          setTimeout(tryFind, 150);
-        } else {
-          // Fallback langsung ke HTML <select>
-          if (select.options && select.options.length > 1) {
-            const validOpt = Array.from(select.options).find(o => o.value && o.value.trim() !== "");
-            if (validOpt) {
-              select.value = validOpt.value;
-              select.dispatchEvent(new Event('change', { bubbles: true }));
-              cleanUpAndResolve(true);
-              return;
-            }
+          if (typeof target.click === 'function') {
+            target.click();
           }
-          cleanUpAndReject(`Opsi "${optionText}" tidak ditemukan di dropdown`);
+
+          // 4. Sync ke native <select> + trigger change,
+          //    supaya listener lain di halaman (validasi, dsb) tetap jalan
+          const matchedText = target.textContent.trim();
+          const nativeOpt = Array.from(select.options).find(
+            o => o.text.trim() === matchedText
+          );
+          if (nativeOpt) {
+            select.value = nativeOpt.value;
+          }
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+
+          return cleanUpAndResolve();
         }
+
+        if (Date.now() - start < timeoutMs) {
+          return setTimeout(tryFind, pollInterval);
+        }
+
+        return cleanUpAndReject(`Opsi "${optionText}" tidak ditemukan di dropdown #${selectId}`);
       };
 
-      setTimeout(tryFind, 150);
+      // beri jeda kecil supaya dropdown sempat render setelah trigger klik
+      setTimeout(tryFind, pollInterval);
     });
-  }
-
-  static setSelectByValueOrText(selectEl, searchVal) {
-    if (!selectEl || !searchVal) return Promise.reject('Invalid arguments');
-    if (!selectEl.id) {
-      selectEl.id = 'autofill-sel-' + Math.floor(Math.random() * 100000);
-    }
-
-    const select2Container = selectEl.nextElementSibling;
-    const isSelect2 = select2Container && select2Container.classList.contains('select2');
-
-    if (isSelect2) {
-      return Select2Helper.openSelect2AndChoose(selectEl.id, searchVal);
-    } else {
-      return new Promise((resolve, reject) => {
-        let attempts = 0;
-        const checkOptions = () => {
-          attempts++;
-          if (selectEl.options && selectEl.options.length > 0) {
-            let optValue = "";
-            const targetUpper = searchVal.trim().toUpperCase();
-
-            for (let opt of selectEl.options) {
-              const optTextUpper = opt.text.toUpperCase();
-              let isMatch = optTextUpper.includes(targetUpper) || opt.value.trim() === searchVal.trim();
-              if (!isMatch) {
-                if (targetUpper === 'TRUCK' && (optTextUpper.includes('JALAN') || optTextUpper.includes('MOBIL') || optTextUpper.includes('TANK'))) {
-                  isMatch = true;
-                } else if (targetUpper === 'SPBU' && (optTextUpper.includes('SPBU') || optTextUpper.includes('STASIUN') || optTextUpper.includes('RETAIL'))) {
-                  isMatch = true;
-                }
-              }
-              if (isMatch) {
-                optValue = opt.value;
-                break;
-              }
-            }
-
-            if (!optValue) {
-              const validOpts = Array.from(selectEl.options).filter(o => o.value && o.value.trim() !== "");
-              if (validOpts.length > 0) {
-                optValue = validOpts[0].value;
-              }
-            }
-
-            if (optValue) {
-              selectEl.value = optValue;
-              selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-              Logger.log(`Berhasil memilih raw select #${selectEl.id}: ${optValue}`, 'success');
-              resolve(true);
-            } else {
-              reject(`Tidak dapat menemukan nilai yang cocok untuk "${searchVal}" pada raw select #${selectEl.id}`);
-            }
-          } else if (attempts < 20) {
-            setTimeout(checkOptions, 150);
-          } else {
-            reject(`Timeout menunggu opsi raw select #${selectEl.id} dimuat`);
-          }
-        };
-
-        checkOptions();
-      });
-    }
   }
 }
 
@@ -610,7 +647,7 @@ class GateInPageHandler extends BasePageHandler {
         return Array.from(document.querySelectorAll('button.btn-primary, button.ew-btn'))
           .find(b => DOMUtils.isVisible(b) &&
             ((b.id || '').toLowerCase().includes('editing') ||
-             (b.textContent || '').trim().toLowerCase().includes('edit')));
+              (b.textContent || '').trim().toLowerCase().includes('edit')));
       };
 
       const getAmtInput = () => {
@@ -845,104 +882,94 @@ class PengisianPageHandler extends BasePageHandler {
 
       Logger.log('Memeriksa status penginputan Pengisian...', 'info');
 
-    chrome.storage.local.get(['subIdx'], (result) => {
-      const subIdx = result.subIdx || 0;
-      const totalLO = rowData.loList.length;
+      chrome.storage.local.get(['subIdx'], (result) => {
+        const subIdx = result.subIdx || 0;
+        const totalLO = rowData.loList.length;
 
-      const loInput = document.getElementById('LO');
-      const isModalOpen = loInput && loInput.getBoundingClientRect().width > 0;
+        // Deteksi modal terbuka secara presisi
+        const modalEl = document.querySelector('.modal.show, .modal-dialog, #form_input_modal, #row_NomorTangki, select#NomorTangki');
+        const isModalOpen = modalEl && DOMUtils.isVisible(modalEl);
 
-      if (subIdx < totalLO) {
-        if (!isModalOpen) {
-          const addBtn = document.getElementById('btn-add-modal') || document.querySelector('button[id*="add"]') || document.querySelector('.btn-primary');
-          if (addBtn) {
-            Logger.log(`Membuka modal untuk item pengisian LO ke-${subIdx + 1}/${totalLO} dalam ${this.stepDelay / 1000} detik...`, 'info');
-            setTimeout(() => addBtn.click(), this.stepDelay);
-          } else {
-            Logger.log('Tombol Add Modal (#btn-add-modal) tidak terdeteksi.', 'error');
-          }
-        }
-        else {
-          Logger.log(`Mengisi detail Modal Pengisian item ke-${subIdx + 1}...`, 'info');
+        if (subIdx < totalLO) {
+          if (!isModalOpen) {
+            const addBtn = document.getElementById('btn-add-modal') ||
+              document.querySelector('button[id*="add"]') ||
+              document.querySelector('.btn-primary') ||
+              Array.from(document.querySelectorAll('button, a')).find(b => DOMUtils.isVisible(b) && (b.textContent.includes('Add') || b.textContent.includes('Tambah')));
 
-          const activeLO = rowData.loList[subIdx];
-          const activeProduct = rowData.produk;
-
-          const loInputEl = document.getElementById('LO') || document.getElementById('x_LO') || document.querySelector('input[id*="LO"]');
-          if (loInputEl) {
-            loInputEl.value = activeLO;
-            loInputEl.dispatchEvent(new Event('change', { bubbles: true }));
-            Logger.log(`Mengisi Nomor LO: ${activeLO}`, 'info');
-          } else {
-            Logger.log('Input LO (#LO) tidak ditemukan di modal.', 'warn');
-          }
-
-          const productSelect = document.getElementById('x_IdProduk') || document.getElementById('Produk') || document.querySelector('select[id*="Produk"]');
-          if (productSelect) {
-            Select2Helper.setSelectByValueOrText(productSelect, activeProduct)
-              .then(() => Logger.log(`Memilih Produk: ${activeProduct}`, 'success'))
-              .catch(err => Logger.log(`Gagal memilih Produk: ${err}`, 'warn'));
-          }
-
-          const isBlending = activeProduct.includes('SOLAR') || activeProduct.includes('BIOSOLAR') || activeProduct.includes('DEXLITE');
-          const blendingCheckbox = document.getElementById('InLineBlending');
-
-          if (isBlending) {
-            if (blendingCheckbox && !blendingCheckbox.checked) {
-              blendingCheckbox.checked = true;
-              blendingCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-              Logger.log('Mengaktifkan In-Line Blending...', 'info');
+            if (addBtn) {
+              Logger.log(`Membuka modal untuk item pengisian LO ke-${subIdx + 1}/${totalLO} dalam ${this.stepDelay / 1000} detik...`, 'info');
+              setTimeout(() => addBtn.click(), this.stepDelay);
+            } else {
+              Logger.log('Tombol Add Modal (#btn-add-modal / + Add) tidak terdeteksi di halaman.', 'error');
             }
-
-            setTimeout(() => this.fillTanksAndMeters(activeProduct, tankConfigs, rowData, totalLO, subIdx, compPos), 800);
           } else {
-            if (blendingCheckbox && blendingCheckbox.checked) {
-              blendingCheckbox.checked = false;
-              blendingCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-            this.fillTanksAndMeters(activeProduct, tankConfigs, rowData, totalLO, subIdx, compPos);
+            Logger.log(`Mengisi detail Modal Pengisian item ke-${subIdx + 1}/${totalLO}...`, 'info');
+
+            const activeLO = rowData.loList[subIdx];
+            const activeProduct = rowData.produk;
+
+            // Jalankan pengisian berurutan (urutan presisi terverifikasi di live portal)
+            this.executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalLO, subIdx, compPos);
           }
-        }
-      }
-      else {
-        Logger.log(`Seluruh baris detail LO selesai dimasukkan. Mengklik Submit Pengisian dalam jeda ${this.stepDelay / 1000} detik...`, 'success');
-        const finalSubmitBtn = document.getElementById('btn-submit') || document.querySelector('button.btn-success');
-        if (finalSubmitBtn) {
-          setTimeout(() => {
-            chrome.storage.local.set({ pengisianSubmitted: true }, () => {
-              finalSubmitBtn.click();
-            });
-          }, this.stepDelay);
         } else {
-          Logger.log('Tombol Submit final Pengisian (#btn-submit) tidak ditemukan.', 'error');
+          Logger.log(`Seluruh baris detail LO (${totalLO} item) selesai dimasukkan. Mengklik Submit Pengisian...`, 'success');
+          const finalSubmitBtn = document.getElementById('btn-submit') || document.querySelector('button.btn-success');
+          if (finalSubmitBtn) {
+            setTimeout(() => {
+              chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
+                finalSubmitBtn.click();
+              });
+            }, this.stepDelay);
+          } else {
+            Logger.log('Tombol Submit final Pengisian (#btn-submit) tidak ditemukan.', 'error');
+          }
         }
-      }
+      });
     });
-  });
-}
+  }
 
-  fillTanksAndMeters(product, tankConfigs, rowData, totalLO, subIdx, compPos) {
-    // Target spesifik #NomorTangki sesuai inspeksi DOM modal
-    const tank1Select = document.getElementById('NomorTangki') ||
-      document.getElementById('x_NomorTangki') ||
-      document.getElementById('el_SubAktivitasDataMobilTangkiPengisian_NomorTangki1') ||
-      document.querySelector('select[id*="Tangki"]');
+  async executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalLO, subIdx, compPos) {
+    // a. Nomor LO
+    const loInputEl = document.getElementById('LO') || document.getElementById('x_LO') || document.querySelector('input[id*="LO"], input[name*="LO"]');
+    if (loInputEl) {
+      loInputEl.value = activeLO;
+      loInputEl.dispatchEvent(new Event('input', { bubbles: true }));
+      loInputEl.dispatchEvent(new Event('change', { bubbles: true }));
+      Logger.log(`Mengisi Nomor LO: ${activeLO}`, 'info');
+    }
 
-    const tank2Select = document.getElementById('NomorTangki2') ||
-      document.getElementById('x_NomorTangki2') ||
-      document.getElementById('el_SubAktivitasDataMobilTangkiPengisian_NomorTangki2') ||
-      document.querySelector('select[id*="Tangki2"]');
+    // b. In-Line Blending Checkbox (diaktifkan duluan)
+    const isBlending = activeProduct.includes('SOLAR') || activeProduct.includes('BIOSOLAR') || activeProduct.includes('DEXLITE');
+    const blendingCheckbox = document.getElementById('InLineBlending') || document.querySelector('input[type="checkbox"][id*="Blending"]');
 
-    let tank1Val = "";
-    let tank2Val = "";
-    const pUpper = product.trim().toUpperCase();
+    if (isBlending) {
+      if (blendingCheckbox && !blendingCheckbox.checked) {
+        blendingCheckbox.checked = true;
+        blendingCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+        blendingCheckbox.dispatchEvent(new Event('click', { bubbles: true }));
+        Logger.log('Mengaktifkan In-Line Blending...', 'info');
+      }
+    } else {
+      if (blendingCheckbox && blendingCheckbox.checked) {
+        blendingCheckbox.checked = false;
+        blendingCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 300));
+
+    // c. Tangki 1 & Tangki 2 (DISET LEBIH DULUAN, beri jeda AJAX 700ms agar auto-populate portal selesai)
+    let tank1Val = "5";
+    let tank2Val = "15";
+    const pUpper = activeProduct.trim().toUpperCase();
 
     if (pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR')) {
-      tank1Val = tankConfigs['BIOSOLAR B50_1'] || tankConfigs['BIOSOLAR'] || '15';
-      tank2Val = tankConfigs['BIOSOLAR B50_2'] || '8';
+      tank1Val = tankConfigs['BIOSOLAR B50_1'] || tankConfigs['BIOSOLAR'] || '5';
+      tank2Val = tankConfigs['BIOSOLAR B50_2'] || '15';
     } else if (pUpper.includes('DEXLITE')) {
-      tank1Val = tankConfigs['DEXLITE_1'] || tankConfigs['DEXLITE'] || '15';
-      tank2Val = tankConfigs['DEXLITE_2'] || '8';
+      tank1Val = tankConfigs['DEXLITE_1'] || tankConfigs['DEXLITE'] || '5';
+      tank2Val = tankConfigs['DEXLITE_2'] || '15';
     } else if (pUpper.includes('PERTALITE')) {
       tank1Val = tankConfigs['PERTALITE'] || '1';
     } else if (pUpper.includes('PERTAMAX') && !pUpper.includes('TURBO')) {
@@ -957,24 +984,82 @@ class PengisianPageHandler extends BasePageHandler {
       tank1Val = tankConfigs[pUpper] || '1';
     }
 
+    const tank1Select = document.getElementById('NomorTangki') || document.getElementById('x_NomorTangki') || document.querySelector('select[id*="NomorTangki"]');
     if (tank1Select) {
-      Logger.log(`Memilih Tangki 1 (#${tank1Select.id}): "${tank1Val}"`, 'info');
-      Select2Helper.setSelectByValueOrText(tank1Select, tank1Val)
-        .then(() => Logger.log(`Berhasil memilih Tangki 1: ${tank1Val}`, 'success'))
-        .catch(err => Logger.log(`Gagal memilih Tangki 1: ${err}`, 'error'));
-    } else {
-      Logger.log('Element Select Tangki 1 (#NomorTangki) tidak ditemukan!', 'error');
+      await Select2Helper.setSelectByValueOrText(tank1Select, tank1Val).catch(e => Logger.log(`Gagal set Tangki 1: ${e}`, 'warn'));
     }
+    await new Promise(r => setTimeout(r, 700));
 
+    const tank2Select = document.getElementById('NomorTangki2') || document.getElementById('x_NomorTangki2') || document.querySelector('select[id*="NomorTangki2"]');
     if (tank2Select && (pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR') || pUpper.includes('DEXLITE'))) {
-      Logger.log(`Memilih Tangki 2 (#${tank2Select.id}): "${tank2Val}"`, 'info');
-      Select2Helper.setSelectByValueOrText(tank2Select, tank2Val)
-        .then(() => Logger.log(`Berhasil memilih Tangki 2: ${tank2Val}`, 'success'))
-        .catch(err => Logger.log(`Gagal memilih Tangki 2: ${err}`, 'error'));
+      await Select2Helper.setSelectByValueOrText(tank2Select, tank2Val).catch(e => Logger.log(`Gagal set Tangki 2: ${e}`, 'warn'));
+    }
+    await new Promise(r => setTimeout(r, 700));
+
+    // d. Produk Utama — DISET PALING AKHIR (dengan verifikasi & proteksi AJAX override)
+    const productSelect = document.getElementById('Produk') || document.getElementById('x_IdProduk') || document.querySelector('select[id*="Produk"]');
+    if (productSelect) {
+      await this.setProdukAndVerify(productSelect, activeProduct, 2000, 200);
     }
 
-    let bayVal = "";
-    let meterVal = "";
+    // e. Quantity, Meter, Bay Number & Kompartemen
+    this.fillMetersAndQuantity(activeProduct, rowData, totalLO, subIdx, compPos);
+
+    // f. Verifikasi akhir Produk & Simpan Modal
+    if (productSelect) {
+      const finalText = productSelect.options[productSelect.selectedIndex]?.text || "";
+      if (finalText.includes(activeProduct) || (activeProduct.includes('BIOSOLAR') && finalText.includes('A040900219'))) {
+        Logger.log(`🎯 VERIFIKASI PRODUK OK: "${finalText}"`, 'success');
+      } else {
+        Logger.log(`↩️ Verifikasi Produk memicu penyesuaian ulang ke: "${activeProduct}"`, 'warn');
+        await this.setProdukAndVerify(productSelect, activeProduct, 1000, 200);
+      }
+    }
+
+    // g. Simpan Modal (+ Add / Simpan)
+    this.saveModal(subIdx);
+  }
+
+  async setProdukAndVerify(selectEl, activeProduct, maxWaitMs = 2000, intervalMs = 200) {
+    const start = Date.now();
+    let productTarget = activeProduct;
+    if (activeProduct.toUpperCase().includes('BIOSOLAR')) {
+      productTarget = 'A040900219';
+    }
+
+    await Select2Helper.setSelectByValueOrText(selectEl, productTarget).catch(e => Logger.log(`Set Produk warn: ${e}`, 'warn'));
+
+    while (Date.now() - start < maxWaitMs) {
+      await new Promise(r => setTimeout(r, intervalMs));
+      const currentText = selectEl.options[selectEl.selectedIndex]?.text || '';
+      if (currentText.includes(productTarget) || currentText.toUpperCase().includes(activeProduct.toUpperCase())) {
+        Logger.log(`🔒 Produk terkonfirmasi stabil: "${currentText}"`, 'success');
+        return true;
+      } else {
+        Logger.log(`↩️ Listener portal mengubah produk ke "${currentText}". Memaksa set ulang...`, 'warn');
+        await Select2Helper.setSelectByValueOrText(selectEl, productTarget).catch(e => {});
+      }
+    }
+    return true;
+  }
+
+  saveModal(subIdx) {
+    const modalSaveBtn = document.querySelector('.modal-footer button.btn-success, #form_input_modal button[type="submit"], #btn_simpan_modal, .modal button.btn-success, .modal button.btn-primary') ||
+      Array.from(document.querySelectorAll('.modal button, button')).find(b => DOMUtils.isVisible(b) && (b.textContent.includes('Add') || b.textContent.includes('Simpan') || b.textContent.includes('Tambah')));
+
+    if (modalSaveBtn) {
+      Logger.log(`Menyimpan detail modal LO ke-${subIdx + 1}...`, 'success');
+      chrome.storage.local.set({ subIdx: subIdx + 1 }, () => {
+        setTimeout(() => modalSaveBtn.click(), 500);
+      });
+    } else {
+      Logger.log('Tombol Simpan/Add Modal tidak ditemukan.', 'warn');
+    }
+  }
+
+  fillMetersAndQuantity(product, rowData, totalLO, subIdx, compPos) {
+    let bayVal = "1";
+    let meterVal = "1";
 
     if (product.includes('DEXLITE') || product.includes('SOLAR') || product.includes('BIOSOLAR')) {
       bayVal = "6";
@@ -987,81 +1072,41 @@ class PengisianPageHandler extends BasePageHandler {
       meterVal = "4";
     }
 
-    const bayInput = document.getElementById('BayNumber');
+    const bayInput = document.getElementById('BayNumber') || document.querySelector('input[id*="Bay"]');
     if (bayInput) {
       bayInput.value = bayVal;
-      bayInput.dispatchEvent(new Event('change'));
+      bayInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    const meterInput = document.getElementById('NoMeter');
+    const meterInput = document.getElementById('NoMeter') || document.querySelector('input[id*="Meter"]');
     if (meterInput) {
       meterInput.value = meterVal;
-      meterInput.dispatchEvent(new Event('change'));
+      meterInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
-    Logger.log(`Set Bay: ${bayVal}, No Meter: ${meterVal}`, 'info');
 
-    const volInput = document.getElementById('Volume');
+    const volInput = document.getElementById('Volume') || document.getElementById('Quantity') || document.querySelector('input[name*="Volume"], input[id*="Volume"], input[name*="Quantity"]');
     const pieceVolume = (rowData.volume / totalLO) * 1000;
     if (volInput) {
       volInput.value = pieceVolume;
-      volInput.dispatchEvent(new Event('change'));
+      volInput.dispatchEvent(new Event('input', { bubbles: true }));
+      volInput.dispatchEvent(new Event('change', { bubbles: true }));
       Logger.log(`Set Volume: ${pieceVolume} Liter`, 'info');
     }
 
-    Logger.log('Menunggu sistem mengisi otomatis Meter Awal dan Meter Akhir...', 'info');
+    const numCompNeeded = Math.ceil((rowData.volume / totalLO) / 8);
+    const comps = [];
+    const baseComp = compPos || 1;
+    for (let i = 0; i < numCompNeeded; i++) {
+      comps.push(baseComp + i);
+    }
+    const compStr = comps.join('.');
 
-    let attempts = 0;
-    const pollInterval = setInterval(() => {
-      attempts++;
-      const mAwal = document.getElementById('MeterAwal') || document.querySelector('[id*="MeterAwal"]');
-      const mAkhir = document.getElementById('MeterAkhir') || document.querySelector('[id*="MeterAkhir"]');
-
-      const isReady = mAwal && mAkhir && mAwal.value.trim() !== "" && mAkhir.value.trim() !== "";
-
-      if (isReady || attempts > 20) {
-        clearInterval(pollInterval);
-        if (!isReady) {
-          Logger.log('Peringatan: Meter Awal/Akhir belum terisi otomatis setelah 10 detik, memaksakan pengisian kompartemen...', 'warn');
-        } else {
-          Logger.log(`Meter terverifikasi. Awal: ${mAwal.value}, Akhir: ${mAkhir.value}`, 'success');
-        }
-
-        const numCompNeeded = Math.ceil((rowData.volume / totalLO) / 8);
-        const comps = [];
-        for (let i = 0; i < numCompNeeded; i++) {
-          comps.push(compPos + i);
-        }
-        const compStr = comps.join('.');
-
-        const compInput = document.getElementById('NomorKompartment');
-        if (compInput) {
-          compInput.value = compStr;
-          compInput.dispatchEvent(new Event('change'));
-          Logger.log(`Mengisi Nomor Kompartemen: ${compStr}`, 'success');
-        }
-
-        setTimeout(() => {
-          const modalAddBtn = document.getElementById('btn-save-detail') || document.querySelector('.modal-footer button.btn-success') || document.querySelector('.modal-footer button.btn-primary');
-          if (modalAddBtn) {
-            Logger.log(`Mengklik Simpan Detail modal... Menunggu jeda ${this.stepDelay / 1000} detik untuk submit...`, 'info');
-
-            chrome.storage.local.set({
-              subIdx: subIdx + 1,
-              currentCompPos: compPos + numCompNeeded
-            }, () => {
-              setTimeout(() => {
-                modalAddBtn.click();
-
-                setTimeout(() => {
-                  window.location.reload();
-                }, this.stepDelay);
-              }, this.stepDelay);
-            });
-          } else {
-            Logger.log('Tombol Simpan Modal/Detail tidak terdeteksi.', 'error');
-          }
-        }, 1000);
-      }
-    }, 500);
+    const compInput = document.getElementById('NomorKompartment') || document.querySelector('input[id*="Kompartment"], input[id*="Kompartemen"]');
+    if (compInput) {
+      compInput.value = compStr;
+      compInput.dispatchEvent(new Event('input', { bubbles: true }));
+      compInput.dispatchEvent(new Event('change', { bubbles: true }));
+      Logger.log(`Mengisi Nomor Kompartemen: ${compStr}`, 'success');
+    }
   }
 }
 
@@ -1212,7 +1257,7 @@ class AutofillEngine {
     else if (document.getElementById('el_SubAktivitasDataMobilTangkiMTGateIn_AMT') || path.includes('gatein')) {
       this.gateInHandler.handle(rowData, stage);
     }
-    else if (document.getElementById('btn-add-modal') || path.includes('pengisian')) {
+    else if (path.includes('pengisian') || path.includes('aktivitastabel') || document.getElementById('btn-add-modal') || document.querySelector('#form_input_modal, select#NomorTangki, .modal.show')) {
       this.pengisianHandler.handle(rowData, stage, tankConfigs, compPos);
     }
     else if (document.getElementById('x_NomorSegel') || path.includes('gateout')) {
@@ -1225,6 +1270,17 @@ class AutofillEngine {
 
   start() {
     this.initAutofill();
+
+    // Loop polling otomatis agar saat modal/halaman AJAX berubah tanpa reload, bot tetap merespons
+    if (!window._autofillInterval) {
+      window._autofillInterval = setInterval(() => {
+        chrome.storage.local.get(['autofillActive'], (res) => {
+          if (res.autofillActive) {
+            this.initAutofill();
+          }
+        });
+      }, 1500);
+    }
   }
 }
 
