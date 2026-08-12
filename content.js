@@ -540,15 +540,14 @@ class PenyaluranAddPageHandler extends BasePageHandler {
     }, 500);
   }
 }
-
 // Handler Halaman 3: Halaman Jembatan / Stepper Proses
 class ProcessBridgePageHandler extends BasePageHandler {
   handle(rowData, stage) {
-    chrome.storage.local.get(['gateInSubmitted', 'pengisianSubmitted'], (res) => {
+    chrome.storage.local.get(['gateInSubmitted', 'pengisianSubmitted', 'gateOutSubmitted'], (res) => {
       if (res.gateInSubmitted) {
         Logger.log('Deteksi berhasil melakukan submit Gate In. Pindah ke tahap Pengisian...', 'success');
         chrome.storage.local.set({ autofillStage: 'GATE_IN_SUBMITTED', gateInSubmitted: false }, () => {
-          this.handle(rowData, 'GATE_IN_SUBMITTED');
+          DOMUtils.goToProsesPage();
         });
         return;
       }
@@ -556,60 +555,103 @@ class ProcessBridgePageHandler extends BasePageHandler {
       if (res.pengisianSubmitted) {
         Logger.log('Deteksi berhasil melakukan submit Pengisian. Pindah ke tahap Gate Out...', 'success');
         chrome.storage.local.set({ autofillStage: 'PENGISIAN_SUBMITTED', pengisianSubmitted: false }, () => {
-          this.handle(rowData, 'PENGISIAN_SUBMITTED');
+          DOMUtils.goToProsesPage();
         });
         return;
       }
 
-      let keyword = 'gatein';
-      if (stage === 'GATE_IN_SUBMITTED' || stage === 'PENGISIAN') {
-        keyword = 'pengisian';
-      } else if (stage === 'PENGISIAN_SUBMITTED' || stage === 'GATE_OUT') {
-        keyword = 'gateout';
+      const tableRows = Array.from(document.querySelectorAll('table tbody tr'));
+
+      // Helper membaca status aktivitas dari baris tabel
+      const getStepStatus = (kw) => {
+        const row = tableRows.find(r => {
+          const text = r.textContent.toLowerCase();
+          return text.includes(kw);
+        });
+        if (!row) return { found: false, isCompleted: false, isDraft: false, link: null };
+
+        const rowText = row.textContent.toLowerCase();
+        const isCompleted = rowText.includes('completed') || rowText.includes('selesai') || rowText.includes('100%');
+        const isDraft = rowText.includes('in progress') || rowText.includes('draft') || rowText.includes('proses');
+        const link = row.querySelector('a[href*="subaktivitas"], a[href*="edit"], a[href*="add"], a[href*="aktivitas"], a');
+        return { found: true, isCompleted, isDraft, link, rowText };
+      };
+
+      const gateInStatus = getStepStatus('gate in');
+      const pengisianStatus = getStepStatus('pengisian');
+      const gateOutStatus = getStepStatus('gate out');
+
+      // Evaluasi stage yang paling tepat secara dinamis berdasarkan kondisi nyata di portal
+      let targetStage = stage;
+      let targetKw = 'gate in';
+
+      if (gateInStatus.isCompleted) {
+        if (!pengisianStatus.isCompleted) {
+          targetStage = 'GATE_IN_SUBMITTED';
+          targetKw = 'pengisian';
+        } else if (!gateOutStatus.isCompleted) {
+          targetStage = 'PENGISIAN_SUBMITTED';
+          targetKw = 'gate out';
+        } else {
+          Logger.log(`Seluruh aktivitas Penyaluran Nopol ${rowData.nopol} sudah berstatus COMPLETED. Melompati ke item berikutnya...`, 'success');
+          chrome.storage.local.get(['currentIndex'], (resIdx) => {
+            const nextIdx = (resIdx.currentIndex || 0) + 1;
+            chrome.storage.local.set({
+              currentIndex: nextIdx,
+              autofillStage: 'CREATE_PENYALURAN'
+            }, () => {
+              const penyaluranLink = document.querySelector('a[href*="PenyaluranList"]') || document.querySelector('a[href*="penyaluran_list"]');
+              if (penyaluranLink) penyaluranLink.click();
+              else window.location.href = '/PenyaluranList';
+            });
+          });
+          return;
+        }
+      } else {
+        targetStage = 'CREATE_PENYALURAN';
+        targetKw = 'gate in';
       }
 
-      Logger.log(`Halaman Bridge. Memproses baris aktivitas untuk langkah: "${keyword}" | Stage: ${stage}`, 'info');
-
-      const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a'));
-
-      let link = bodyLinks.find(l => {
-        const href = (l.getAttribute('href') || '').toLowerCase();
-        const text = l.textContent.toLowerCase();
-        const isSubAktivitas = href.includes('subaktivitas') || href.includes('edit') || href.includes('add') || href.includes('aktivitas');
-        const matchesKeyword = href.includes(keyword) || text.includes(keyword.replace('gatein', 'gate in').replace('gateout', 'gate out'));
-        return isSubAktivitas && matchesKeyword;
-      });
-
-      if (!link) {
-        Logger.log(`Tautan spesifik untuk "${keyword}" tidak ditemukan. Menggunakan fallback tautan subaktivitas pertama...`, 'warn');
-        link = bodyLinks.find(l => {
-          const href = l.getAttribute('href') || '';
-          return href.toLowerCase().includes('subaktivitas');
-        }) || document.querySelector('#el1_Aktivitas_Aktivitas2 a, #el1_Proses_Aktivitas2 a, table tbody tr td a');
+      // Update autofillStage di storage jika terdeteksi maju
+      if (targetStage !== stage) {
+        Logger.log(`Deteksi status tabel: Meng-update stage otomatis "${stage}" -> "${targetStage}"`, 'info');
+        chrome.storage.local.set({ autofillStage: targetStage });
       }
 
-      if (link) {
-        const linkText = link.textContent.trim();
-        const href = link.getAttribute('href') || '';
-        Logger.log(`Menemukan tautan aktivitas: "${linkText}". Mengklik dalam jeda ${this.stepDelay / 1000} detik...`, 'info');
+      // Cari link spesifik untuk targetKw
+      const activeStatus = getStepStatus(targetKw);
+      let linkToClick = activeStatus.link;
+
+      if (!linkToClick) {
+        const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a'));
+        linkToClick = bodyLinks.find(l => {
+          const row = l.closest('tr');
+          if (!row) return false;
+          const rowText = row.textContent.toLowerCase();
+          return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
+        });
+      }
+
+      if (linkToClick) {
+        const linkText = linkToClick.textContent.trim();
+        const href = linkToClick.getAttribute('href') || '';
+        Logger.log(`Menemukan tautan aktivitas target "${targetKw}": "${linkText}". Mengklik dalam ${this.stepDelay / 1000} detik...`, 'info');
 
         setTimeout(() => {
-          Logger.log(`Mengklik tautan aktivitas: "${linkText}" (href: ${href})`, 'success');
-          if (linkText.toLowerCase().includes('pengisian') || href.toLowerCase().includes('pengisian')) {
-            chrome.storage.local.set({ currentCompPos: 1, subIdx: 0 }, () => {
-              link.click();
+          if (targetKw === 'pengisian') {
+            chrome.storage.local.set({ currentCompPos: 1 }, () => {
+              linkToClick.click();
             });
           } else {
-            link.click();
+            linkToClick.click();
           }
         }, this.stepDelay);
       } else {
-        Logger.log(`Tidak menemukan tautan aktivitas di baris tabel untuk keyword "${keyword}".`, 'error');
+        Logger.log(`Tidak ada tautan aktif untuk step "${targetKw}". Menunggu siklus berikutnya...`, 'warn');
       }
     });
   }
 }
-
 
 // Handler Halaman 4: Formulir MT Gate In (FIXED)
 class GateInPageHandler extends BasePageHandler {
@@ -742,6 +784,10 @@ class GateInPageHandler extends BasePageHandler {
       }
 
       // ---------- 4. Isi form + Save, lalu tunggu Submit ----------
+      // Kunci siklus polling 1.5 detik selama proses ini berjalan (bisa 15-20 detik),
+      // supaya initAutofill() tidak masuk lagi ke handler ini saat masih di tengah proses.
+      window._autofillLockUntil = Date.now() + 40000;
+
       Logger.log('Mengisi data MT Gate In...', 'info');
 
       const amtInput = getAmtInput();
@@ -880,11 +926,40 @@ class PengisianPageHandler extends BasePageHandler {
         return;
       }
 
+      // Cek 0: Jika modal konfirmasi submit (#confirmBtn) terdeteksi terbuka
+      const confirmBtn = document.getElementById('confirmBtn') ||
+        document.querySelector('.modal.show #confirmBtn') ||
+        document.querySelector('button[id*="confirmBtn"]');
+
+      if (confirmBtn && DOMUtils.isVisible(confirmBtn)) {
+        Logger.log('Tombol Konfirmasi Submit (#confirmBtn) terdeteksi! Mengklik konfirmasi...', 'success');
+        chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
+          confirmBtn.click();
+          setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
+        });
+        return;
+      }
+
       Logger.log('Memeriksa status penginputan Pengisian...', 'info');
 
       chrome.storage.local.get(['subIdx'], (result) => {
-        const subIdx = result.subIdx || 0;
+        let subIdx = result.subIdx || 0;
         const totalLO = rowData.loList.length;
+
+        // Inspeksi tabel draf Pengisian yang sudah terisi di portal
+        const detailTableRows = Array.from(document.querySelectorAll('#tbl_detail_pengisian tbody tr, table.ew-table tbody tr, table tbody tr')).filter(r => {
+          const cells = r.querySelectorAll('td');
+          if (cells.length < 2) return false;
+          const text = r.textContent.trim().toLowerCase();
+          return !text.includes('no data') && !text.includes('tidak ada data') && !text.includes('record 0');
+        });
+        const existingCount = detailTableRows.length;
+
+        if (existingCount > subIdx && existingCount <= totalLO) {
+          Logger.log(`Deteksi Draf: ${existingCount} item LO sudah ada di tabel Pengisian. Menyesuaikan subIdx ke-${existingCount}...`, 'info');
+          subIdx = existingCount;
+          chrome.storage.local.set({ subIdx: existingCount });
+        }
 
         // Deteksi modal terbuka secara presisi
         const modalEl = document.querySelector('.modal.show, .modal-dialog, #form_input_modal, #row_NomorTangki, select#NomorTangki');
@@ -906,21 +981,49 @@ class PengisianPageHandler extends BasePageHandler {
           } else {
             Logger.log(`Mengisi detail Modal Pengisian item ke-${subIdx + 1}/${totalLO}...`, 'info');
 
+            // Kunci siklus polling 1.5 detik selama proses async ini berjalan
+            window._autofillLockUntil = Date.now() + 20000;
+
             const activeLO = rowData.loList[subIdx];
             const activeProduct = rowData.produk;
 
-            // Jalankan pengisian berurutan (urutan presisi terverifikasi di live portal)
+            // Jalankan pengisian berurutan
             this.executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalLO, subIdx, compPos);
           }
         } else {
-          Logger.log(`Seluruh baris detail LO (${totalLO} item) selesai dimasukkan. Mengklik Submit Pengisian...`, 'success');
-          const finalSubmitBtn = document.getElementById('btn-submit') || document.querySelector('button.btn-success');
+          Logger.log(`Seluruh baris detail LO (${totalLO} item) selesai dimasukkan/tersedia di draf. Menyiapkan Save Draft & Submit final...`, 'success');
+          const saveBtn = document.getElementById('btn-save') || document.querySelector('button[data-nextstatus="Draft"]');
+          const finalSubmitBtn = document.getElementById('btn-submit') || document.querySelector('button[data-nextstatus="Completed"]') || document.querySelector('button.btn-success');
+
+          if (saveBtn && DOMUtils.isVisible(saveBtn)) {
+            Logger.log('Mengklik tombol Save Draft (#btn-save)...', 'info');
+            saveBtn.click();
+          }
+
           if (finalSubmitBtn) {
             setTimeout(() => {
-              chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
-                finalSubmitBtn.click();
-              });
-            }, this.stepDelay);
+              Logger.log('Mengklik tombol Submit Pengisian final (#btn-submit)...', 'success');
+              finalSubmitBtn.click();
+
+              // Tunggu munculnya modal konfirmasi dialog (#confirmBtn)
+              setTimeout(() => {
+                const modalConfirmBtn = document.getElementById('confirmBtn') ||
+                  document.querySelector('.modal.show #confirmBtn') ||
+                  document.querySelector('button[id*="confirmBtn"]');
+
+                if (modalConfirmBtn && DOMUtils.isVisible(modalConfirmBtn)) {
+                  Logger.log('Mengklik konfirmasi submit final (#confirmBtn)...', 'success');
+                  chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
+                    modalConfirmBtn.click();
+                    setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
+                  });
+                } else {
+                  chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
+                    setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
+                  });
+                }
+              }, 1000);
+            }, this.stepDelay + 1000);
           } else {
             Logger.log('Tombol Submit final Pengisian (#btn-submit) tidak ditemukan.', 'error');
           }
@@ -1037,7 +1140,7 @@ class PengisianPageHandler extends BasePageHandler {
         return true;
       } else {
         Logger.log(`↩️ Listener portal mengubah produk ke "${currentText}". Memaksa set ulang...`, 'warn');
-        await Select2Helper.setSelectByValueOrText(selectEl, productTarget).catch(e => {});
+        await Select2Helper.setSelectByValueOrText(selectEl, productTarget).catch(e => { });
       }
     }
     return true;
@@ -1217,6 +1320,15 @@ class AutofillEngine {
   }
 
   initAutofill() {
+    // GUARD: jika ada handler yang sedang di tengah proses panjang (mis. mengisi
+    // modal Pengisian atau menunggu Submit Gate In), JANGAN mulai siklus baru dulu.
+    // Tanpa guard ini, polling 1.5 detik bisa memanggil handle() berkali-kali secara
+    // tumpang tindih -> dropdown Select2 dibuka/ditutup berulang -> terlihat seperti
+    // halaman terus-menerus loading/reload.
+    if (window._autofillLockUntil && Date.now() < window._autofillLockUntil) {
+      return;
+    }
+
     chrome.storage.local.get(['autofillActive', 'excelData', 'currentIndex', 'autofillStage', 'tankConfigs', 'currentCompPos'], (res) => {
       if (!res.autofillActive || !res.excelData || res.excelData.length === 0) {
         return;
@@ -1287,4 +1399,3 @@ class AutofillEngine {
 // Instantiate and start engine automatically
 const engine = new AutofillEngine();
 engine.start();
-
