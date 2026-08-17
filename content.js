@@ -434,11 +434,15 @@ class ListPageHandler extends BasePageHandler {
 
       if (hasIncompleteRow && incompleteLink) {
         Logger.log(`Menemukan transaksi In Progress untuk plat ${rowData.nopol}. Membuka Halaman Proses...`, 'success');
+        // Kunci siklus polling 1.5 detik supaya initAutofill() tidak masuk lagi ke
+        // handler ini dan menjadwalkan klik ganda selama menunggu stepDelay/navigasi.
+        window._autofillLockUntil = Date.now() + this.stepDelay + 5000;
         chrome.storage.local.set({ autofillStage: 'CLICK_PROCESS_LINK' }, () => {
           setTimeout(() => incompleteLink.click(), this.stepDelay);
         });
       } else if (hasCompleteRow && !hasIncompleteRow) {
         Logger.log(`Transaksi untuk plat ${rowData.nopol} sudah berstatus Complete. Melompati baris Excel ini...`, 'success');
+        window._autofillLockUntil = Date.now() + this.stepDelay + 5000;
         chrome.storage.local.get(['currentIndex'], (resIdx) => {
           const nextIdx = (resIdx.currentIndex || 0) + 1;
           chrome.storage.local.set({
@@ -455,6 +459,7 @@ class ListPageHandler extends BasePageHandler {
         const addBtn = document.getElementById('btn-add-penyaluran');
         if (addBtn) {
           Logger.log(`Plat ${rowData.nopol} tidak ditemukan di list. Menambahkan transaksi baru (+ Add New)...`, 'info');
+          window._autofillLockUntil = Date.now() + this.stepDelay + 5000;
           chrome.storage.local.set({ autofillStage: 'CREATE_PENYALURAN' }, () => {
             setTimeout(() => addBtn.click(), this.stepDelay);
           });
@@ -573,7 +578,40 @@ class ProcessBridgePageHandler extends BasePageHandler {
         const rowText = row.textContent.toLowerCase();
         const isCompleted = rowText.includes('completed') || rowText.includes('selesai') || rowText.includes('100%');
         const isDraft = rowText.includes('in progress') || rowText.includes('draft') || rowText.includes('proses');
-        const link = row.querySelector('a[href*="subaktivitas"], a[href*="edit"], a[href*="add"], a[href*="aktivitas"], a');
+
+        // Mengambil semua link <a> yang memiliki href di dalam baris
+        const links = Array.from(row.querySelectorAll('a[href]'));
+
+        const isIgnoredLink = (href) => {
+          return href.includes('aktivitasedit') ||
+            href.includes('aktivitasview') ||
+            href.includes('aktivitasdokumenlist') ||
+            href.includes('dokumenlist') ||
+            href.includes('showdetail');
+        };
+
+        // Prioritas 1: Link yang href-nya mengandung 'subaktivitas' atau 'aktivitastabel'
+        let link = links.find(a => {
+          const href = (a.getAttribute('href') || '').toLowerCase();
+          return (href.includes('subaktivitas') || href.includes('aktivitastabel')) && !isIgnoredLink(href);
+        });
+
+        // Prioritas 2: Link lain yang BUKAN link master/dokumen yang di-ignore
+        if (!link) {
+          link = links.find(a => {
+            const href = (a.getAttribute('href') || '').toLowerCase();
+            return !isIgnoredLink(href) && (href.includes('edit') || href.includes('add') || href.includes('detail') || href.includes('proses') || href.includes('tabel'));
+          });
+        }
+
+        // Prioritas 3: Link pertama di baris yang bukan link kosong/anchor dummy (# / javascript) dan bukan link di-ignore
+        if (!link) {
+          link = links.find(a => {
+            const href = (a.getAttribute('href') || '').toLowerCase();
+            return href && href !== '#' && !href.startsWith('javascript:') && !isIgnoredLink(href);
+          });
+        }
+
         return { found: true, isCompleted, isDraft, link, rowText };
       };
 
@@ -623,8 +661,19 @@ class ProcessBridgePageHandler extends BasePageHandler {
       let linkToClick = activeStatus.link;
 
       if (!linkToClick) {
-        const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a'));
+        const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a[href]'));
+        // Prioritaskan link subaktivitas / aktivitastabel di seluruh tabel yang belum completed
         linkToClick = bodyLinks.find(l => {
+          const href = (l.getAttribute('href') || '').toLowerCase();
+          if (!href.includes('subaktivitas') && !href.includes('aktivitastabel')) return false;
+          if (href.includes('dokumenlist')) return false;
+          const row = l.closest('tr');
+          if (!row) return false;
+          const rowText = row.textContent.toLowerCase();
+          return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
+        }) || bodyLinks.find(l => {
+          const href = (l.getAttribute('href') || '').toLowerCase();
+          if (href.includes('aktivitasedit') || href.includes('aktivitasview') || href.includes('dokumenlist') || href.includes('showdetail')) return false;
           const row = l.closest('tr');
           if (!row) return false;
           const rowText = row.textContent.toLowerCase();
@@ -1108,7 +1157,7 @@ class PengisianPageHandler extends BasePageHandler {
     // e. Quantity, Meter, Bay Number & Kompartemen
     this.fillMetersAndQuantity(activeProduct, rowData, totalLO, subIdx, compPos);
 
-    // f. Verifikasi akhir Produk & Simpan Modal
+    // f. Verifikasi akhir Produk
     if (productSelect) {
       const finalText = productSelect.options[productSelect.selectedIndex]?.text || "";
       if (finalText.includes(activeProduct) || (activeProduct.includes('BIOSOLAR') && finalText.includes('A040900219'))) {
@@ -1119,8 +1168,34 @@ class PengisianPageHandler extends BasePageHandler {
       }
     }
 
-    // g. Simpan Modal (+ Add / Simpan)
+    // g. Deteksi dinamis Meter Awal & Meter Akhir dari AJAX portal
+    await this.waitForMeterAutoFill(15000);
+
+    // h. Simpan Modal (+ Add / Simpan)
     this.saveModal(subIdx);
+  }
+
+  async waitForMeterAutoFill(maxWaitMs = 15000) {
+    Logger.log('⏳ Menunggu auto-fill Meter Awal & Meter Akhir dari portal AJAX...', 'info');
+    const start = Date.now();
+
+    while (Date.now() - start < maxWaitMs) {
+      const meterAwalEl = document.getElementById('MeterAwal') || document.querySelector('input[name="MeterAwal"]');
+      const meterAkhirEl = document.getElementById('MeterAkhir') || document.querySelector('input[name="MeterAkhir"]');
+
+      const valAwal = meterAwalEl ? (meterAwalEl.value || '').trim() : '';
+      const valAkhir = meterAkhirEl ? (meterAkhirEl.value || '').trim() : '';
+
+      if (valAwal !== '' && valAkhir !== '') {
+        Logger.log(`✅ Meter Awal & Akhir terkonfirmasi terisi! [Awal: "${valAwal}", Akhir: "${valAkhir}"]`, 'success');
+        return { success: true, meterAwal: valAwal, meterAkhir: valAkhir };
+      }
+
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    Logger.log('⚠️ Timeout (15s): Meter Awal/Akhir belum terisi otomatis. Melanjutkan ke simpan modal.', 'warn');
+    return { success: false };
   }
 
   async setProdukAndVerify(selectEl, activeProduct, maxWaitMs = 2000, intervalMs = 200) {
