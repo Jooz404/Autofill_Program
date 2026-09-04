@@ -433,10 +433,15 @@ class ListPageHandler extends BasePageHandler {
       }
 
       if (hasIncompleteRow && incompleteLink) {
+        if (incompleteLink.dataset.autofillNavigating === 'true') {
+          Logger.log(`Navigasi ke Halaman Proses sedang berlangsung untuk plat ${rowData.nopol}. Menunggu respon browser...`, 'info');
+          return;
+        }
         Logger.log(`Menemukan transaksi In Progress untuk plat ${rowData.nopol}. Membuka Halaman Proses...`, 'success');
-        // Kunci siklus polling 1.5 detik supaya initAutofill() tidak masuk lagi ke
-        // handler ini dan menjadwalkan klik ganda selama menunggu stepDelay/navigasi.
-        window._autofillLockUntil = Date.now() + this.stepDelay + 5000;
+        incompleteLink.dataset.autofillNavigating = 'true';
+        incompleteLink.style.opacity = '0.5';
+        // Kunci polling 15 detik untuk memberi jeda aman bagi browser berpindah halaman pada jaringan lambat
+        window._autofillLockUntil = Date.now() + 15000;
         chrome.storage.local.set({ autofillStage: 'CLICK_PROCESS_LINK' }, () => {
           setTimeout(() => incompleteLink.click(), this.stepDelay);
         });
@@ -682,9 +687,17 @@ class ProcessBridgePageHandler extends BasePageHandler {
       }
 
       if (linkToClick) {
+        if (linkToClick.dataset.autofillNavigating === 'true') {
+          Logger.log(`Navigasi ke subaktivitas "${targetKw}" sedang berlangsung. Menunggu respon browser...`, 'info');
+          return;
+        }
         const linkText = linkToClick.textContent.trim();
-        const href = linkToClick.getAttribute('href') || '';
         Logger.log(`Menemukan tautan aktivitas target "${targetKw}": "${linkText}". Mengklik dalam ${this.stepDelay / 1000} detik...`, 'info');
+
+        linkToClick.dataset.autofillNavigating = 'true';
+        linkToClick.style.opacity = '0.5';
+        // Kunci polling 15 detik agar browser bebas memuat halaman pada jaringan lambat
+        window._autofillLockUntil = Date.now() + 15000;
 
         setTimeout(() => {
           if (targetKw === 'pengisian') {
