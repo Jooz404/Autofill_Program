@@ -437,13 +437,34 @@ class ListPageHandler extends BasePageHandler {
           Logger.log(`Navigasi ke Halaman Proses sedang berlangsung untuk plat ${rowData.nopol}. Menunggu respon browser...`, 'info');
           return;
         }
-        Logger.log(`Menemukan transaksi In Progress untuk plat ${rowData.nopol}. Membuka Halaman Proses...`, 'success');
+        Logger.log(`Menemukan transaksi In Progress untuk plat ${rowData.nopol}. Mengirim ke Master Dispatcher...`, 'success');
         incompleteLink.dataset.autofillNavigating = 'true';
         incompleteLink.style.opacity = '0.5';
-        // Kunci polling 15 detik untuk memberi jeda aman bagi browser berpindah halaman pada jaringan lambat
-        window._autofillLockUntil = Date.now() + 15000;
-        chrome.storage.local.set({ autofillStage: 'CLICK_PROCESS_LINK' }, () => {
-          setTimeout(() => incompleteLink.click(), this.stepDelay);
+
+        // Master Dispatcher: Membuka tab pekerja baru di background (Maksimal 3 tab paralel)
+        chrome.runtime.sendMessage({
+          action: 'OPEN_WORKER_TAB',
+          url: incompleteLink.href,
+          rowIndex: rowData._index || 0,
+          rowData: rowData
+        }, (res) => {
+          if (res && res.success) {
+            Logger.log(`[Master Dispatcher] Berhasil membuka Tab Pekerja #${res.tabId} untuk plat ${rowData.nopol}. (Aktif: ${res.activeCount}/3)`, 'success');
+            // Geser ke baris Excel berikutnya tanpa menunggu tab pekerja selesai
+            chrome.storage.local.get(['currentIndex'], (resIdx) => {
+              const nextIdx = (resIdx.currentIndex || 0) + 1;
+              chrome.storage.local.set({
+                currentIndex: nextIdx,
+                autofillStage: 'CREATE_PENYALURAN'
+              }, () => {
+                setTimeout(() => window.location.reload(), 2500);
+              });
+            });
+          } else {
+            Logger.log(`[Master Dispatcher] Antrean tab pekerja penuh (${res?.activeCount || 3}/3). Menunggu tab lain selesai...`, 'warn');
+            incompleteLink.dataset.autofillNavigating = 'false';
+            incompleteLink.style.opacity = '1';
+          }
         });
       } else if (hasCompleteRow && !hasIncompleteRow) {
         Logger.log(`Transaksi untuk plat ${rowData.nopol} sudah berstatus Complete. Melompati baris Excel ini...`, 'success');
@@ -1314,7 +1335,10 @@ class GateOutPageHandler extends BasePageHandler {
         setTimeout(() => {
           chrome.storage.local.set({ gateOutSubmitted: true }, () => {
             DOMUtils.clickElement(completedBtn);
-            setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
+            setTimeout(() => {
+              // Notifikasi Service Worker background untuk menutup Tab Pekerja ini secara otomatis
+              chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+            }, this.stepDelay + 1000);
           });
         }, this.stepDelay);
         return;
@@ -1322,24 +1346,8 @@ class GateOutPageHandler extends BasePageHandler {
 
       // 2. Baru kalau tombol Submit TIDAK ADA / belum visible, cek apakah transaksi sudah COMPLETED atau pernah disubmit
       if (resStorage.gateOutSubmitted || DOMUtils.isActivityStatusCompleted()) {
-        Logger.log('Aktivitas Gate Out terdeteksi telah disubmit/COMPLETED. Bergerak ke transaksi berikutnya...', 'success');
-        chrome.storage.local.get(['currentIndex'], (resIdx) => {
-          const nextIdx = (resIdx.currentIndex || 0) + 1;
-          chrome.storage.local.set({
-            currentIndex: nextIdx,
-            autofillStage: 'CREATE_PENYALURAN',
-            gateOutSubmitted: false
-          }, () => {
-            const penyaluranLink = document.querySelector('a[href*="PenyaluranList"]') ||
-              document.querySelector('a[href*="penyaluran_list"]') ||
-              document.querySelector('a[href*="penyaluranlist"]');
-            if (penyaluranLink) {
-              setTimeout(() => penyaluranLink.click(), this.stepDelay);
-            } else {
-              setTimeout(() => { window.location.href = '/PenyaluranList'; }, this.stepDelay);
-            }
-          });
-        });
+        Logger.log('Aktivitas Gate Out terdeteksi telah disubmit/COMPLETED. Menutup Tab Pekerja otomatis...', 'success');
+        chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
         return;
       }
 
