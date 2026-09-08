@@ -186,26 +186,54 @@ class ExcelParser {
         }
 
         const parsedRows = rows.map((row, idx) => {
-          let rawProduct = (row['Produk'] || row['PRODUK'] || '').toString().trim();
-          let cleanProduct = rawProduct.replace(/[;,\s]+$/, '').toUpperCase();
+          // Helper pencari nilai kolom berbasis berbagai variasi nama header
+          const findVal = (targets) => {
+            const rowKeys = Object.keys(row);
+            for (let target of targets) {
+              const cleanTarget = target.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+              for (let k of rowKeys) {
+                const cleanKey = k.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                if (cleanKey === cleanTarget && row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
+                  return row[k];
+                }
+              }
+            }
+            return '';
+          };
 
-          let rawLO = (row['LO-KL'] || row['LO'] || '').toString().trim();
-          let loList = rawLO.split(',').map(s => s.trim()).filter(s => s.length > 0);
+          let rawNopol = findVal(['No. Polisi', 'No Polisi', 'Nomor Polisi', 'Nopol', 'No.Polisi', 'Plat', 'NO. POLISI', 'NO POLISI']);
+          let rawSupir = findVal(['Supir aktual', 'Supir', 'Nama Supir', 'Driver', 'AMT', 'SUPIR AKTUAL', 'NAMA DRIVER']);
+          let rawVol = findVal(['Total volume[kL]', 'Volume', 'Total Volume', 'Qty', 'Jumlah', 'TOTAL VOLUME', 'VOL']);
+          let rawProduct = findVal(['Produk', 'Nama Produk', 'Product', 'PRODUK']);
+          let rawLO = findVal(['LO-KL', 'LO', 'LO KL', 'No LO', 'Nomor LO']);
+          let rawSegel = findVal(['Segel', 'No Segel', 'Nomor Segel', 'SEGEL']);
+          let rawDateShipment = findVal(['Tanggal Shipment', 'Tanggal', 'Gate In', 'Waktu Gate In', 'TANGGAL SHIPMENT']);
+          let rawGateOut = findVal(['Gate Out (State 80)', 'Gate Out', 'Waktu Gate Out', 'GATE OUT']);
 
-          let rawSegel = (row['Segel'] || row['SEGEL'] || '').toString().trim();
-          let segelList = rawSegel.split(',').map(s => s.trim()).filter(s => s.length > 0);
+          // Fallback cerdas: Jika header nopol tidak cocok, cari sel apapun yang mengandung plat nomor valid (mis. B1234XYZ, DB1234XY, L1234XY)
+          if (!rawNopol) {
+            const plateRegex = /\b([A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3})\b/i;
+            for (let k of Object.keys(row)) {
+              const strVal = String(row[k] || '').trim();
+              const match = strVal.match(plateRegex);
+              if (match) {
+                rawNopol = match[1].replace(/\s+/g, '').toUpperCase();
+                break;
+              }
+            }
+          }
 
-          let rawDateShipment = row['Tanggal Shipment'] || row['TANGGAL SHIPMENT'] || '';
+          let cleanProduct = String(rawProduct || '').trim().replace(/[;,\s]+$/, '').toUpperCase();
+          let loList = String(rawLO || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
+          let segelList = String(rawSegel || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
           let cleanDateShipment = DateFormatter.formatExcelDate(rawDateShipment);
-
-          let rawGateOut = row['Gate Out (State 80)'] || row['GATE OUT'] || '';
           let cleanGateOut = DateFormatter.formatExcelDate(rawGateOut);
 
           return {
             rowNum: idx + 1,
-            nopol: (row['No. Polisi'] || row['NO. POLISI'] || '').toString().trim(),
-            supir: (row['Supir aktual'] || row['SUPIR'] || '').toString().trim(),
-            volume: parseFloat(row['Total volume[kL]'] || row['VOLUME'] || '0'),
+            nopol: String(rawNopol || '').replace(/\s+/g, '').toUpperCase().trim(),
+            supir: String(rawSupir || '').trim(),
+            volume: parseFloat(rawVol || '0') || 0,
             produk: cleanProduct,
             gateInTime: cleanDateShipment,
             gateOutTime: cleanGateOut,
@@ -219,7 +247,10 @@ class ExcelParser {
           return;
         }
 
-        this.logger.addLog(`Berhasil membaca ${parsedRows.length} data transaksi dari Excel.`, 'success');
+        // Secara otomatis membalikkan urutan agar pemrosesan selalu dimulai dari baris TERBAWAH Excel ke atas
+        parsedRows.reverse();
+
+        this.logger.addLog(`Berhasil membaca ${parsedRows.length} data transaksi dari Excel (Urutan: Baris Terbawah ke Atas).`, 'success');
         if (this.fileNameLabel) this.fileNameLabel.innerText = file.name;
 
         if (this.rowProgress) this.rowProgress.innerText = `0 / ${parsedRows.length}`;
@@ -229,6 +260,7 @@ class ExcelParser {
         chrome.storage.local.set({
           excelData: parsedRows,
           currentIndex: 0,
+          completedCount: 0,
           autofillStage: 'CREATE_PENYALURAN'
         }, () => {
           this.logger.addLog('Data transaksi tersimpan pada storage ekstensi. Bot siap berjalan.', 'info');
@@ -270,6 +302,8 @@ class PopupAppManager {
     this.excelFileInput = document.getElementById('excel-file');
     this.dropzone = document.getElementById('dropzone');
     this.fileNameLabel = document.getElementById('file-name-label');
+    this.modeSelect = document.getElementById('mode-select');
+    this.maxWorkersInput = document.getElementById('max-workers-input');
 
     this.statusText = document.getElementById('status-text');
     this.rowProgress = document.getElementById('row-progress');
@@ -291,9 +325,47 @@ class PopupAppManager {
     this.isRunning = false;
 
     this.initTabNavigation();
+    this.initModeSelector();
     this.initDropzoneAndFileInput();
     this.initAutomationControls();
     this.initMessageListener();
+  }
+
+  initModeSelector() {
+    if (this.modeSelect) {
+      chrome.storage.local.get(['skipPengisian'], (res) => {
+        if (res.skipPengisian) {
+          this.modeSelect.value = 'SKIP_PENGISIAN';
+        } else {
+          this.modeSelect.value = 'FULL';
+        }
+      });
+
+      this.modeSelect.addEventListener('change', () => {
+        const isSkip = this.modeSelect.value === 'SKIP_PENGISIAN';
+        chrome.storage.local.set({ skipPengisian: isSkip }, () => {
+          this.logger.addLog(`Mode alur kerja diubah ke: ${isSkip ? 'Semi-Otomatis (Gate In & Gate Out Saja)' : 'Otomatis Penuh'}`, 'info');
+        });
+      });
+    }
+
+    if (this.maxWorkersInput) {
+      chrome.storage.local.get(['maxWorkerTabs'], (res) => {
+        const val = res.maxWorkerTabs || 3;
+        this.maxWorkersInput.value = val;
+      });
+
+      this.maxWorkersInput.addEventListener('change', () => {
+        let val = parseInt(this.maxWorkersInput.value || '3', 10);
+        if (isNaN(val) || val < 1) val = 1;
+        if (val > 10) val = 10;
+        this.maxWorkersInput.value = val;
+
+        chrome.storage.local.set({ maxWorkerTabs: val }, () => {
+          this.logger.addLog(`Batas maksimal tab pekerja diubah ke: ${val} tab`, 'info');
+        });
+      });
+    }
   }
 
   initTabNavigation() {
@@ -430,17 +502,18 @@ class PopupAppManager {
 
   startStatusPolling() {
     setInterval(() => {
-      chrome.storage.local.get(['autofillActive', 'excelData', 'currentIndex', 'autofillStage'], (res) => {
+      chrome.storage.local.get(['autofillActive', 'excelData', 'currentIndex', 'completedCount', 'autofillStage'], (res) => {
         if (res.excelData && res.excelData.length > 0) {
-          const idx = res.currentIndex || 0;
           const total = res.excelData.length;
-          if (this.rowProgress) this.rowProgress.innerText = `${idx} / ${total}`;
-          if (this.progressBar) this.progressBar.style.width = `${Math.min(100, (idx / total) * 100)}%`;
+          const completed = Math.min(total, res.completedCount || 0);
+
+          if (this.rowProgress) this.rowProgress.innerText = `${completed} / ${total}`;
+          if (this.progressBar) this.progressBar.style.width = `${Math.min(100, (completed / total) * 100)}%`;
 
           if (res.autofillActive) {
             this.updateControlUI(true, 'running', `Running (${res.autofillStage})`);
             if (this.btnStart) this.btnStart.removeAttribute('disabled');
-          } else if (idx === total && total > 0) {
+          } else if (completed === total && total > 0) {
             this.updateControlUI(false, 'completed', 'Completed');
           } else {
             this.updateControlUI(false, 'paused', 'Paused');

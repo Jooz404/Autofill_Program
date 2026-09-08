@@ -17,6 +17,138 @@ class Logger {
   }
 }
 
+// 1b. Worker Context Manager (Per-Tab Isolated Storage)
+class WorkerContextManager {
+  static context = null;
+
+  static async init() {
+    if (WorkerContextManager.context) return WorkerContextManager.context;
+
+    const cached = sessionStorage.getItem('worker_context');
+    if (cached) {
+      try {
+        WorkerContextManager.context = JSON.parse(cached);
+        return WorkerContextManager.context;
+      } catch (e) { }
+    }
+
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ action: 'GET_WORKER_CONTEXT' }, (res) => {
+        if (chrome.runtime.lastError || !res || !res.isWorker || !res.workerData) {
+          WorkerContextManager.context = { isWorker: false, tabId: null, rowData: null, rowIndex: null };
+        } else {
+          WorkerContextManager.context = {
+            isWorker: true,
+            tabId: res.tabId,
+            rowData: res.workerData.rowData,
+            rowIndex: res.workerData.rowIndex
+          };
+          sessionStorage.setItem('worker_context', JSON.stringify(WorkerContextManager.context));
+        }
+        resolve(WorkerContextManager.context);
+      });
+    });
+  }
+
+  static isWorker() {
+    return !!(WorkerContextManager.context && WorkerContextManager.context.isWorker);
+  }
+
+  static getRowData() {
+    return WorkerContextManager.context ? WorkerContextManager.context.rowData : null;
+  }
+
+  static getStage(defaultStage = 'CREATE_PENYALURAN') {
+    return sessionStorage.getItem('worker_stage') || defaultStage;
+  }
+
+  static setStage(val) {
+    sessionStorage.setItem('worker_stage', String(val));
+  }
+
+  static getSubIdx() {
+    const val = sessionStorage.getItem('worker_subIdx');
+    return val !== null ? parseInt(val, 10) : 0;
+  }
+
+  static setSubIdx(val) {
+    sessionStorage.setItem('worker_subIdx', String(val));
+  }
+
+  static isSubmitted(key) {
+    return sessionStorage.getItem(`worker_${key}`) === 'true';
+  }
+
+  static setSubmitted(key, val = true) {
+    sessionStorage.setItem(`worker_${key}`, val ? 'true' : 'false');
+  }
+}
+
+// 1c. Network & Blank Page Recovery Watchdog (Self-Healing System)
+class NetworkWatchdog {
+  static isReloading = false;
+
+  static checkAndRecover() {
+    if (NetworkWatchdog.isReloading) return true;
+
+    const bodyText = (document.body?.innerText || '').toLowerCase().trim();
+    const bodyChildrenCount = document.body?.children?.length || 0;
+    const currentUrl = window.location.href;
+
+    const isBlankPage = bodyChildrenCount === 0 || bodyText === '';
+    const isServerError = [
+      '504 gateway time-out',
+      '504 gateway timeout',
+      '500 internal server error',
+      'service unavailable',
+      'the page cannot be displayed',
+      'bad gateway',
+      'http error 50',
+      'connection timed out'
+    ].some(err => bodyText.includes(err));
+
+    if (isBlankPage || isServerError) {
+      NetworkWatchdog.isReloading = true;
+      Logger.log(`[Network Watchdog] Halaman blank/server error terdeteksi (${isServerError ? 'Server Error' : 'Blank Body'}). Memulihkan navigasi dalam 3 detik...`, 'warn');
+
+      setTimeout(() => {
+        if (currentUrl.toLowerCase().includes('proseslist') && currentUrl.includes('cmd=search')) {
+          const baseUrl = window.location.origin + '/ProsesList';
+          Logger.log(`[Network Watchdog] Directing ke base URL bersih: ${baseUrl}`, 'info');
+          window.location.href = baseUrl;
+        } else {
+          Logger.log('[Network Watchdog] Memuat ulang (reload) halaman...', 'info');
+          window.location.reload();
+        }
+      }, 3000);
+
+      return true;
+    }
+
+    return false;
+  }
+
+  static startStuckTimer(timeoutMs = 25000) {
+    if (window._stuckTimerId) clearTimeout(window._stuckTimerId);
+
+    window._stuckTimerId = setTimeout(() => {
+      chrome.storage.local.get(['autofillActive'], (res) => {
+        if (!res.autofillActive) return;
+
+        Logger.log(`[Network Watchdog] Tab terdeteksi tidak merespons selama ${timeoutMs / 1000} detik. Memuat ulang halaman untuk pemulihan...`, 'warn');
+        window.location.reload();
+      });
+    }, timeoutMs);
+  }
+
+  static resetStuckTimer() {
+    if (window._stuckTimerId) {
+      clearTimeout(window._stuckTimerId);
+      window._stuckTimerId = null;
+    }
+  }
+}
+
 // 2. Select2 & Dropdown Interaction Helper Class
 class Select2Helper {
   /**
@@ -306,6 +438,40 @@ class DOMUtils {
     return String(str).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   }
 
+  static getPageNopol() {
+    // 1. Cek input atau elemen spesifik Nomor Polisi
+    const nopolInput = document.getElementById('x_NomorPolisi') ||
+      document.querySelector('input[id*="NomorPolisi"]') ||
+      document.querySelector('select[id*="NomorPolisi"]') ||
+      document.querySelector('.el_MobilTangki_NomorPolisi, .el_Penyaluran_NomorPolisi');
+
+    if (nopolInput) {
+      const val = nopolInput.value || nopolInput.textContent;
+      const cleanVal = DOMUtils.normalizeNopol(val);
+      if (cleanVal) return cleanVal;
+    }
+
+    // 2. Cek label / row yang memiliki teks "Nomor Polisi"
+    const labels = Array.from(document.querySelectorAll('label, td, th, div, span'));
+    for (let label of labels) {
+      const txt = label.textContent.trim().toLowerCase();
+      if (txt === 'nomor polisi' || txt === 'no. polisi' || txt === 'nopol') {
+        const parent = label.closest('.row, tr, .form-group, div') || label.parentElement;
+        if (parent) {
+          const match = parent.textContent.match(/\b([A-Za-z]{1,2}\s*\d{1,4}\s*[A-Za-z]{1,3})\b/);
+          if (match) {
+            return DOMUtils.normalizeNopol(match[1]);
+          }
+        }
+      }
+    }
+
+    // 3. Fallback scan regex pada seluruh body text untuk pola plat nomor
+    const pageText = document.body?.innerText || '';
+    const match = pageText.match(/\b([A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3})\b/);
+    return match ? DOMUtils.normalizeNopol(match[1]) : null;
+  }
+
   static isRowMatchNopol(rowEl, targetNopol) {
     const targetClean = DOMUtils.normalizeNopol(targetNopol);
     if (!targetClean) return false;
@@ -437,34 +603,60 @@ class ListPageHandler extends BasePageHandler {
           Logger.log(`Navigasi ke Halaman Proses sedang berlangsung untuk plat ${rowData.nopol}. Menunggu respon browser...`, 'info');
           return;
         }
-        Logger.log(`Menemukan transaksi In Progress untuk plat ${rowData.nopol}. Mengirim ke Master Dispatcher...`, 'success');
-        incompleteLink.dataset.autofillNavigating = 'true';
-        incompleteLink.style.opacity = '0.5';
 
-        // Master Dispatcher: Membuka tab pekerja baru di background (Maksimal 3 tab paralel)
-        chrome.runtime.sendMessage({
-          action: 'OPEN_WORKER_TAB',
-          url: incompleteLink.href,
-          rowIndex: rowData._index || 0,
-          rowData: rowData
-        }, (res) => {
-          if (res && res.success) {
-            Logger.log(`[Master Dispatcher] Berhasil membuka Tab Pekerja #${res.tabId} untuk plat ${rowData.nopol}. (Aktif: ${res.activeCount}/3)`, 'success');
-            // Geser ke baris Excel berikutnya tanpa menunggu tab pekerja selesai
-            chrome.storage.local.get(['currentIndex'], (resIdx) => {
-              const nextIdx = (resIdx.currentIndex || 0) + 1;
-              chrome.storage.local.set({
-                currentIndex: nextIdx,
-                autofillStage: 'CREATE_PENYALURAN'
-              }, () => {
-                setTimeout(() => window.location.reload(), 2500);
+        // Cek dulu apakah nopol ini sedang aktif dikerjakan oleh Tab Pekerja lain
+        chrome.runtime.sendMessage({ action: 'GET_ACTIVE_WORKER_COUNT' }, (resCount) => {
+          if (resCount && resCount.activePlates) {
+            const normTarget = DOMUtils.normalizeNopol(rowData.nopol);
+            const isAlreadyActive = resCount.activePlates.some(p => DOMUtils.normalizeNopol(p) === normTarget);
+            if (isAlreadyActive) {
+              Logger.log(`[Master Dispatcher] Plat ${rowData.nopol} saat ini sedang dikerjakan oleh Tab Pekerja lain. Melompati pembukaan tab duplikat...`, 'warn');
+              chrome.storage.local.get(['currentIndex'], (resIdx) => {
+                const nextIdx = (resIdx.currentIndex || 0) + 1;
+                chrome.storage.local.set({
+                  currentIndex: nextIdx,
+                  autofillStage: 'CREATE_PENYALURAN'
+                }, () => {
+                  setTimeout(() => window.location.reload(), 1500);
+                });
               });
-            });
-          } else {
-            Logger.log(`[Master Dispatcher] Antrean tab pekerja penuh (${res?.activeCount || 3}/3). Menunggu tab lain selesai...`, 'warn');
-            incompleteLink.dataset.autofillNavigating = 'false';
-            incompleteLink.style.opacity = '1';
+              return;
+            }
           }
+
+          Logger.log(`Menemukan transaksi In Progress untuk plat ${rowData.nopol}. Mengirim ke Master Dispatcher...`, 'success');
+          incompleteLink.dataset.autofillNavigating = 'true';
+          incompleteLink.style.opacity = '0.5';
+
+          // Master Dispatcher: Membuka tab pekerja baru di background (Maksimal 3 tab paralel)
+          chrome.runtime.sendMessage({
+            action: 'OPEN_WORKER_TAB',
+            url: incompleteLink.href,
+            rowIndex: rowData._index || 0,
+            rowData: rowData
+          }, (res) => {
+            if (res && res.success) {
+              Logger.log(`[Master Dispatcher] Berhasil membuka Tab Pekerja #${res.tabId} untuk plat ${rowData.nopol}. (Aktif: ${res.activeCount}/${res.max || 3})`, 'success');
+              chrome.storage.local.get(['currentIndex'], (resIdx) => {
+                const nextIdx = (resIdx.currentIndex || 0) + 1;
+                chrome.storage.local.set({
+                  currentIndex: nextIdx,
+                  autofillStage: 'CREATE_PENYALURAN'
+                }, () => {
+                  setTimeout(() => window.location.reload(), 2500);
+                });
+              });
+            } else {
+              const now = Date.now();
+              if (!window._lastQueueFullLog || (now - window._lastQueueFullLog > 10000)) {
+                window._lastQueueFullLog = now;
+                const reasonText = res?.reason === 'PLATE_ALREADY_PROCESSING' ? `Plat ${rowData.nopol} sudah aktif di tab pekerja` : `Antrean tab penuh (${res?.activeCount || 3}/${res?.max || 3})`;
+                Logger.log(`[Master Dispatcher] Tab pekerja ditunda: ${reasonText}. Menunggu slot selesai...`, 'warn');
+              }
+              incompleteLink.dataset.autofillNavigating = 'false';
+              incompleteLink.style.opacity = '1';
+            }
+          });
         });
       } else if (hasCompleteRow && !hasIncompleteRow) {
         Logger.log(`Transaksi untuk plat ${rowData.nopol} sudah berstatus Complete. Melompati baris Excel ini...`, 'success');
@@ -574,90 +766,112 @@ class PenyaluranAddPageHandler extends BasePageHandler {
 // Handler Halaman 3: Halaman Jembatan / Stepper Proses
 class ProcessBridgePageHandler extends BasePageHandler {
   handle(rowData, stage) {
-    chrome.storage.local.get(['gateInSubmitted', 'pengisianSubmitted', 'gateOutSubmitted'], (res) => {
-      if (res.gateInSubmitted) {
-        Logger.log('Deteksi berhasil melakukan submit Gate In. Pindah ke tahap Pengisian...', 'success');
-        chrome.storage.local.set({ autofillStage: 'GATE_IN_SUBMITTED', gateInSubmitted: false }, () => {
-          DOMUtils.goToProsesPage();
-        });
-        return;
-      }
+    const isWorker = WorkerContextManager.isWorker();
+    const isGateInSubmitted = isWorker ? WorkerContextManager.isSubmitted('gateInSubmitted') : false;
+    const isPengisianSubmitted = isWorker ? WorkerContextManager.isSubmitted('pengisianSubmitted') : false;
 
-      if (res.pengisianSubmitted) {
-        Logger.log('Deteksi berhasil melakukan submit Pengisian. Pindah ke tahap Gate Out...', 'success');
-        chrome.storage.local.set({ autofillStage: 'PENGISIAN_SUBMITTED', pengisianSubmitted: false }, () => {
-          DOMUtils.goToProsesPage();
-        });
-        return;
-      }
+    if (isGateInSubmitted) {
+      Logger.log('Deteksi berhasil melakukan submit Gate In (Tab Context). Pindah ke tahap Pengisian...', 'success');
+      WorkerContextManager.setSubmitted('gateInSubmitted', false);
+      WorkerContextManager.setStage('GATE_IN_SUBMITTED');
+      DOMUtils.goToProsesPage();
+      return;
+    }
 
-      const tableRows = Array.from(document.querySelectorAll('table tbody tr'));
+    if (isPengisianSubmitted) {
+      Logger.log('Deteksi berhasil melakukan submit Pengisian (Tab Context). Pindah ke tahap Gate Out...', 'success');
+      WorkerContextManager.setSubmitted('pengisianSubmitted', false);
+      WorkerContextManager.setStage('PENGISIAN_SUBMITTED');
+      DOMUtils.goToProsesPage();
+      return;
+    }
 
-      // Helper membaca status aktivitas dari baris tabel
-      const getStepStatus = (kw) => {
-        const row = tableRows.find(r => {
-          const text = r.textContent.toLowerCase();
-          return text.includes(kw);
-        });
-        if (!row) return { found: false, isCompleted: false, isDraft: false, link: null };
+    const tableRows = Array.from(document.querySelectorAll('table tbody tr'));
 
-        const rowText = row.textContent.toLowerCase();
-        const isCompleted = rowText.includes('completed') || rowText.includes('selesai') || rowText.includes('100%');
-        const isDraft = rowText.includes('in progress') || rowText.includes('draft') || rowText.includes('proses');
+    // Helper membaca status aktivitas dari baris tabel
+    const getStepStatus = (kw) => {
+      const row = tableRows.find(r => {
+        const text = r.textContent.toLowerCase();
+        return text.includes(kw);
+      });
+      if (!row) return { found: false, isCompleted: false, isDraft: false, link: null };
 
-        // Mengambil semua link <a> yang memiliki href di dalam baris
-        const links = Array.from(row.querySelectorAll('a[href]'));
+      const rowText = row.textContent.toLowerCase();
+      const isCompleted = rowText.includes('completed') || rowText.includes('selesai') || rowText.includes('100%');
+      const isDraft = rowText.includes('in progress') || rowText.includes('draft') || rowText.includes('proses');
 
-        const isIgnoredLink = (href) => {
-          return href.includes('aktivitasedit') ||
-            href.includes('aktivitasview') ||
-            href.includes('aktivitasdokumenlist') ||
-            href.includes('dokumenlist') ||
-            href.includes('showdetail');
-        };
+      // Mengambil semua link <a> yang memiliki href di dalam baris
+      const links = Array.from(row.querySelectorAll('a[href]'));
 
-        // Prioritas 1: Link yang href-nya mengandung 'subaktivitas' atau 'aktivitastabel'
-        let link = links.find(a => {
-          const href = (a.getAttribute('href') || '').toLowerCase();
-          return (href.includes('subaktivitas') || href.includes('aktivitastabel')) && !isIgnoredLink(href);
-        });
-
-        // Prioritas 2: Link lain yang BUKAN link master/dokumen yang di-ignore
-        if (!link) {
-          link = links.find(a => {
-            const href = (a.getAttribute('href') || '').toLowerCase();
-            return !isIgnoredLink(href) && (href.includes('edit') || href.includes('add') || href.includes('detail') || href.includes('proses') || href.includes('tabel'));
-          });
-        }
-
-        // Prioritas 3: Link pertama di baris yang bukan link kosong/anchor dummy (# / javascript) dan bukan link di-ignore
-        if (!link) {
-          link = links.find(a => {
-            const href = (a.getAttribute('href') || '').toLowerCase();
-            return href && href !== '#' && !href.startsWith('javascript:') && !isIgnoredLink(href);
-          });
-        }
-
-        return { found: true, isCompleted, isDraft, link, rowText };
+      const isIgnoredLink = (href) => {
+        return href.includes('aktivitasedit') ||
+          href.includes('aktivitasview') ||
+          href.includes('aktivitasdokumenlist') ||
+          href.includes('dokumenlist') ||
+          href.includes('showdetail');
       };
 
-      const gateInStatus = getStepStatus('gate in');
-      const pengisianStatus = getStepStatus('pengisian');
-      const gateOutStatus = getStepStatus('gate out');
+      // Prioritas 1: Link yang href-nya mengandung 'subaktivitas' atau 'aktivitastabel'
+      let link = links.find(a => {
+        const href = (a.getAttribute('href') || '').toLowerCase();
+        return (href.includes('subaktivitas') || href.includes('aktivitastabel')) && !isIgnoredLink(href);
+      });
 
-      // Evaluasi stage yang paling tepat secara dinamis berdasarkan kondisi nyata di portal
-      let targetStage = stage;
-      let targetKw = 'gate in';
+      // Prioritas 2: Link lain yang BUKAN link master/dokumen yang di-ignore
+      if (!link) {
+        link = links.find(a => {
+          const href = (a.getAttribute('href') || '').toLowerCase();
+          return !isIgnoredLink(href) && (href.includes('edit') || href.includes('add') || href.includes('detail') || href.includes('proses') || href.includes('tabel'));
+        });
+      }
+
+      // Prioritas 3: Link pertama di baris yang bukan link kosong/anchor dummy (# / javascript) dan bukan link di-ignore
+      if (!link) {
+        link = links.find(a => {
+          const href = (a.getAttribute('href') || '').toLowerCase();
+          return href && href !== '#' && !href.startsWith('javascript:') && !isIgnoredLink(href);
+        });
+      }
+
+      return { found: true, isCompleted, isDraft, link, rowText };
+    };
+
+    const gateInStatus = getStepStatus('gate in');
+    const pengisianStatus = getStepStatus('pengisian');
+    const gateOutStatus = getStepStatus('gate out');
+
+    // Evaluasi stage yang paling tepat secara dinamis berdasarkan kondisi nyata di portal
+    let targetStage = stage;
+    let targetKw = 'gate in';
+
+    chrome.storage.local.get(['skipPengisian'], (resConfig) => {
+      const skipPengisian = resConfig.skipPengisian || false;
 
       if (gateInStatus.isCompleted) {
         if (!pengisianStatus.isCompleted) {
+          if (skipPengisian) {
+            Logger.log(`[Mode Semi-Otomatis] Gate In Nopol ${rowData.nopol} SELESAI. Standby menunggu pengisian Pengisian secara manual di portal...`, 'warn');
+            return;
+          }
           targetStage = 'GATE_IN_SUBMITTED';
           targetKw = 'pengisian';
         } else if (!gateOutStatus.isCompleted) {
+          const hasGateOutTime = rowData && rowData.gateOutTime && String(rowData.gateOutTime).trim() !== "";
+          if (!hasGateOutTime) {
+            Logger.log(`[Gate Out Filter] Data Gate Out di Excel untuk plat ${rowData.nopol} kosong/belum ada. Melewati tahap Gate Out & menutup Tab Pekerja...`, 'warn');
+            if (isWorker) {
+              chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+            }
+            return;
+          }
           targetStage = 'PENGISIAN_SUBMITTED';
           targetKw = 'gate out';
         } else {
-          Logger.log(`Seluruh aktivitas Penyaluran Nopol ${rowData.nopol} sudah berstatus COMPLETED. Melompati ke item berikutnya...`, 'success');
+        Logger.log(`Seluruh aktivitas Penyaluran Nopol ${rowData.nopol} sudah berstatus COMPLETED.`, 'success');
+        if (isWorker) {
+          Logger.log(`[Worker Tab] Mengirim sinyal WORKER_TASK_COMPLETED untuk plat ${rowData.nopol}...`, 'success');
+          chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+        } else {
           chrome.storage.local.get(['currentIndex'], (resIdx) => {
             const nextIdx = (resIdx.currentIndex || 0) + 1;
             chrome.storage.local.set({
@@ -669,69 +883,76 @@ class ProcessBridgePageHandler extends BasePageHandler {
               else window.location.href = '/PenyaluranList';
             });
           });
-          return;
         }
-      } else {
-        targetStage = 'CREATE_PENYALURAN';
-        targetKw = 'gate in';
+        return;
       }
+    } else {
+      targetStage = 'CREATE_PENYALURAN';
+      targetKw = 'gate in';
+    }
 
-      // Update autofillStage di storage jika terdeteksi maju
-      if (targetStage !== stage) {
-        Logger.log(`Deteksi status tabel: Meng-update stage otomatis "${stage}" -> "${targetStage}"`, 'info');
-        chrome.storage.local.set({ autofillStage: targetStage });
+    // Update autofillStage di storage jika terdeteksi maju
+    if (targetStage !== stage) {
+      Logger.log(`Deteksi status tabel: Meng-update stage otomatis "${stage}" -> "${targetStage}"`, 'info');
+      if (isWorker) WorkerContextManager.setStage(targetStage);
+      else chrome.storage.local.set({ autofillStage: targetStage });
+    }
+
+    // Cari link spesifik untuk targetKw
+    const activeStatus = getStepStatus(targetKw);
+    let linkToClick = activeStatus.link;
+
+    if (!linkToClick) {
+      const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a[href]'));
+      // Prioritaskan link subaktivitas / aktivitastabel di seluruh tabel yang belum completed
+      linkToClick = bodyLinks.find(l => {
+        const href = (l.getAttribute('href') || '').toLowerCase();
+        if (!href.includes('subaktivitas') && !href.includes('aktivitastabel')) return false;
+        if (href.includes('dokumenlist')) return false;
+        const row = l.closest('tr');
+        if (!row) return false;
+        const rowText = row.textContent.toLowerCase();
+        return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
+      }) || bodyLinks.find(l => {
+        const href = (l.getAttribute('href') || '').toLowerCase();
+        if (href.includes('aktivitasedit') || href.includes('aktivitasview') || href.includes('dokumenlist') || href.includes('showdetail')) return false;
+        const row = l.closest('tr');
+        if (!row) return false;
+        const rowText = row.textContent.toLowerCase();
+        return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
+      });
+    }
+
+    if (linkToClick) {
+      if (linkToClick.dataset.autofillNavigating === 'true') {
+        Logger.log(`Navigasi ke subaktivitas "${targetKw}" sedang berlangsung. Menunggu respon browser...`, 'info');
+        return;
       }
+      const linkText = linkToClick.textContent.trim();
+      Logger.log(`Menemukan tautan aktivitas target "${targetKw}": "${linkText}". Mengklik dalam ${this.stepDelay / 1000} detik...`, 'info');
 
-      // Cari link spesifik untuk targetKw
-      const activeStatus = getStepStatus(targetKw);
-      let linkToClick = activeStatus.link;
+      linkToClick.dataset.autofillNavigating = 'true';
+      linkToClick.style.opacity = '0.5';
+      // Kunci polling 15 detik agar browser bebas memuat halaman pada jaringan lambat
+      window._autofillLockUntil = Date.now() + 15000;
 
-      if (!linkToClick) {
-        const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a[href]'));
-        // Prioritaskan link subaktivitas / aktivitastabel di seluruh tabel yang belum completed
-        linkToClick = bodyLinks.find(l => {
-          const href = (l.getAttribute('href') || '').toLowerCase();
-          if (!href.includes('subaktivitas') && !href.includes('aktivitastabel')) return false;
-          if (href.includes('dokumenlist')) return false;
-          const row = l.closest('tr');
-          if (!row) return false;
-          const rowText = row.textContent.toLowerCase();
-          return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
-        }) || bodyLinks.find(l => {
-          const href = (l.getAttribute('href') || '').toLowerCase();
-          if (href.includes('aktivitasedit') || href.includes('aktivitasview') || href.includes('dokumenlist') || href.includes('showdetail')) return false;
-          const row = l.closest('tr');
-          if (!row) return false;
-          const rowText = row.textContent.toLowerCase();
-          return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
-        });
-      }
-
-      if (linkToClick) {
-        if (linkToClick.dataset.autofillNavigating === 'true') {
-          Logger.log(`Navigasi ke subaktivitas "${targetKw}" sedang berlangsung. Menunggu respon browser...`, 'info');
-          return;
-        }
-        const linkText = linkToClick.textContent.trim();
-        Logger.log(`Menemukan tautan aktivitas target "${targetKw}": "${linkText}". Mengklik dalam ${this.stepDelay / 1000} detik...`, 'info');
-
-        linkToClick.dataset.autofillNavigating = 'true';
-        linkToClick.style.opacity = '0.5';
-        // Kunci polling 15 detik agar browser bebas memuat halaman pada jaringan lambat
-        window._autofillLockUntil = Date.now() + 15000;
-
-        setTimeout(() => {
-          if (targetKw === 'pengisian') {
+      setTimeout(() => {
+        if (targetKw === 'pengisian') {
+          if (isWorker) {
+            sessionStorage.setItem('currentCompPos', '1');
+            linkToClick.click();
+          } else {
             chrome.storage.local.set({ currentCompPos: 1 }, () => {
               linkToClick.click();
             });
-          } else {
-            linkToClick.click();
           }
-        }, this.stepDelay);
-      } else {
-        Logger.log(`Tidak ada tautan aktif untuk step "${targetKw}". Menunggu siklus berikutnya...`, 'warn');
-      }
+        } else {
+          linkToClick.click();
+        }
+      }, this.stepDelay);
+    } else {
+      Logger.log(`Tidak ada tautan aktif untuk step "${targetKw}". Menunggu siklus berikutnya...`, 'warn');
+    }
     });
   }
 }
@@ -792,23 +1013,36 @@ class GateInPageHandler extends BasePageHandler {
       const clickSubmitAndFinish = (submitBtn) => {
         Logger.log(`Tombol Submit (#${submitBtn.id || 'unknown'}) terdeteksi. Mengklik dalam ${this.stepDelay / 1000}s...`, 'success');
         setTimeout(() => {
-          chrome.storage.local.set({ gateInSubmitted: true, gateInSaved: false }, () => {
+          if (WorkerContextManager.isWorker()) {
+            WorkerContextManager.setSubmitted('gateInSubmitted', true);
             DOMUtils.clickElement(submitBtn);
             setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
-          });
+          } else {
+            chrome.storage.local.set({ gateInSubmitted: true, gateInSaved: false }, () => {
+              DOMUtils.clickElement(submitBtn);
+              setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
+            });
+          }
         }, this.stepDelay);
       };
 
       // ---------- 1. Status sudah Completed / sudah pernah submit ----------
-      if (resStorage.gateInSubmitted || DOMUtils.isActivityStatusCompleted()) {
+      const isWorker = WorkerContextManager.isWorker();
+      const isGateInDone = isWorker ? WorkerContextManager.isSubmitted('gateInSubmitted') : resStorage.gateInSubmitted;
+
+      if (isGateInDone || DOMUtils.isActivityStatusCompleted()) {
         Logger.log('Aktivitas Gate In terdeteksi COMPLETED / sudah disubmit. Kembali ke menu Proses...', 'success');
-        chrome.storage.local.set({
-          autofillStage: 'GATE_IN_SUBMITTED',
-          gateInSubmitted: false,
-          gateInSaved: false
-        }, () => {
-          setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay);
-        });
+        if (isWorker) {
+          WorkerContextManager.setSubmitted('gateInSubmitted', true);
+          WorkerContextManager.setStage('GATE_IN_SUBMITTED');
+        } else {
+          chrome.storage.local.set({
+            autofillStage: 'GATE_IN_SUBMITTED',
+            gateInSubmitted: false,
+            gateInSaved: false
+          });
+        }
+        setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay);
         return;
       }
 
@@ -1000,12 +1234,19 @@ class GateInPageHandler extends BasePageHandler {
 // Handler Halaman 5: Formulir Pengisian (Multi-baris detail dengan Modal Tambah)
 class PengisianPageHandler extends BasePageHandler {
   handle(rowData, stage, tankConfigs, compPos) {
+    const isWorker = WorkerContextManager.isWorker();
+    const isPengisianDone = isWorker ? WorkerContextManager.isSubmitted('pengisianSubmitted') : false;
+
     chrome.storage.local.get(['pengisianSubmitted'], (resStorage) => {
-      if (resStorage.pengisianSubmitted || DOMUtils.isActivityStatusCompleted()) {
+      if (isPengisianDone || resStorage.pengisianSubmitted || DOMUtils.isActivityStatusCompleted()) {
         Logger.log('Aktivitas Pengisian terdeteksi telah disubmit/COMPLETED. Mengarahkan kembali ke menu Proses...', 'success');
-        chrome.storage.local.set({ autofillStage: 'PENGISIAN_SUBMITTED', pengisianSubmitted: false }, () => {
-          setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay);
-        });
+        if (isWorker) {
+          WorkerContextManager.setSubmitted('pengisianSubmitted', true);
+          WorkerContextManager.setStage('PENGISIAN_SUBMITTED');
+        } else {
+          chrome.storage.local.set({ autofillStage: 'PENGISIAN_SUBMITTED', pengisianSubmitted: false });
+        }
+        setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay);
         return;
       }
 
@@ -1016,17 +1257,24 @@ class PengisianPageHandler extends BasePageHandler {
 
       if (confirmBtn && DOMUtils.isVisible(confirmBtn)) {
         Logger.log('Tombol Konfirmasi Submit (#confirmBtn) terdeteksi! Mengklik konfirmasi...', 'success');
-        chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
+        if (isWorker) {
+          WorkerContextManager.setSubmitted('pengisianSubmitted', true);
+          WorkerContextManager.setSubIdx(0);
           confirmBtn.click();
           setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
-        });
+        } else {
+          chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
+            confirmBtn.click();
+            setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
+          });
+        }
         return;
       }
 
       Logger.log('Memeriksa status penginputan Pengisian...', 'info');
 
       chrome.storage.local.get(['subIdx'], (result) => {
-        let subIdx = result.subIdx || 0;
+        let subIdx = isWorker ? WorkerContextManager.getSubIdx() : (result.subIdx || 0);
         const totalLO = rowData.loList.length;
 
         // Inspeksi tabel draf Pengisian yang sudah terisi di portal
@@ -1261,9 +1509,14 @@ class PengisianPageHandler extends BasePageHandler {
 
     if (modalSaveBtn) {
       Logger.log(`Menyimpan detail modal LO ke-${subIdx + 1}...`, 'success');
-      chrome.storage.local.set({ subIdx: subIdx + 1 }, () => {
+      if (WorkerContextManager.isWorker()) {
+        WorkerContextManager.setSubIdx(subIdx + 1);
         setTimeout(() => modalSaveBtn.click(), 500);
-      });
+      } else {
+        chrome.storage.local.set({ subIdx: subIdx + 1 }, () => {
+          setTimeout(() => modalSaveBtn.click(), 500);
+        });
+      }
     } else {
       Logger.log('Tombol Simpan/Add Modal tidak ditemukan.', 'warn');
     }
@@ -1325,6 +1578,18 @@ class PengisianPageHandler extends BasePageHandler {
 /// Handler Halaman 6: Formulir MT Gate Out
 class GateOutPageHandler extends BasePageHandler {
   handle(rowData, stage) {
+    const isWorker = WorkerContextManager.isWorker();
+    const isGateOutDone = isWorker ? WorkerContextManager.isSubmitted('gateOutSubmitted') : false;
+
+    const hasGateOutTime = rowData && rowData.gateOutTime && String(rowData.gateOutTime).trim() !== "";
+    if (!hasGateOutTime) {
+      Logger.log(`[Gate Out Filter] Data Gate Out di Excel untuk plat ${rowData?.nopol || ''} kosong/belum ada. Batal mengisi Gate Out & menutup Tab Pekerja...`, 'warn');
+      if (isWorker) {
+        chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+      }
+      return;
+    }
+
     chrome.storage.local.get(['gateOutSubmitted'], (resStorage) => {
       // 1. Prioritas Utama: Cek dulu apakah tombol Submit (#btn-completed / #btn-completedEdit) visible ada
       const completedBtn = Array.from(document.querySelectorAll('#btn-completed, #btn-completedEdit, button.btn-success'))
@@ -1333,19 +1598,26 @@ class GateOutPageHandler extends BasePageHandler {
       if (completedBtn) {
         Logger.log(`Tombol Submit final Gate Out (#${completedBtn.id || 'btn-completed'}) terdeteksi! Mengirimkan data Gate Out final...`, 'success');
         setTimeout(() => {
-          chrome.storage.local.set({ gateOutSubmitted: true }, () => {
+          if (isWorker) {
+            WorkerContextManager.setSubmitted('gateOutSubmitted', true);
             DOMUtils.clickElement(completedBtn);
             setTimeout(() => {
-              // Notifikasi Service Worker background untuk menutup Tab Pekerja ini secara otomatis
               chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
             }, this.stepDelay + 1000);
-          });
+          } else {
+            chrome.storage.local.set({ gateOutSubmitted: true }, () => {
+              DOMUtils.clickElement(completedBtn);
+              setTimeout(() => {
+                chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+              }, this.stepDelay + 1000);
+            });
+          }
         }, this.stepDelay);
         return;
       }
 
       // 2. Baru kalau tombol Submit TIDAK ADA / belum visible, cek apakah transaksi sudah COMPLETED atau pernah disubmit
-      if (resStorage.gateOutSubmitted || DOMUtils.isActivityStatusCompleted()) {
+      if (isGateOutDone || resStorage.gateOutSubmitted || DOMUtils.isActivityStatusCompleted()) {
         Logger.log('Aktivitas Gate Out terdeteksi telah disubmit/COMPLETED. Menutup Tab Pekerja otomatis...', 'success');
         chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
         return;
@@ -1415,25 +1687,81 @@ class AutofillEngine {
     });
   }
 
-  initAutofill() {
+  async initAutofill() {
+    // 0. Deteksi Halaman Blank / Server Error (504 Timeout, 500 Error, dsb)
+    if (NetworkWatchdog.checkAndRecover()) {
+      return;
+    }
+
     // GUARD: jika ada handler yang sedang di tengah proses panjang (mis. mengisi
     // modal Pengisian atau menunggu Submit Gate In), JANGAN mulai siklus baru dulu.
-    // Tanpa guard ini, polling 1.5 detik bisa memanggil handle() berkali-kali secara
-    // tumpang tindih -> dropdown Select2 dibuka/ditutup berulang -> terlihat seperti
-    // halaman terus-menerus loading/reload.
     if (window._autofillLockUntil && Date.now() < window._autofillLockUntil) {
       return;
     }
+
+    await WorkerContextManager.init();
 
     chrome.storage.local.get(['autofillActive', 'excelData', 'currentIndex', 'autofillStage', 'tankConfigs', 'currentCompPos'], (res) => {
       if (!res.autofillActive || !res.excelData || res.excelData.length === 0) {
         return;
       }
 
+      // 1. Jalur Tab Pekerja (Isolasi Per-Tab)
+      if (WorkerContextManager.isWorker()) {
+        const rowData = WorkerContextManager.getRowData();
+        if (!rowData) return;
+        const stage = WorkerContextManager.getStage('CREATE_PENYALURAN');
+        const tankConfigs = res.tankConfigs || {};
+        const compPos = parseInt(sessionStorage.getItem('currentCompPos') || '1', 10);
+        this.processStage(rowData, stage, tankConfigs, WorkerContextManager.context.rowIndex || 0, res.excelData.length, compPos);
+        return;
+      }
+
+      // 2. Jalur Master Tab (Dispatching & Monitoring)
       const idx = res.currentIndex || 0;
       if (idx >= res.excelData.length) {
-        Logger.log('Semua data di Excel telah selesai diproses!', 'success');
-        chrome.storage.local.set({ autofillActive: false });
+        chrome.runtime.sendMessage({ action: 'GET_ACTIVE_WORKER_COUNT' }, (resCount) => {
+          if (resCount && resCount.count > 0) {
+            Logger.log(`[Master Dispatcher] Semua data Excel (${res.excelData.length} baris) telah didistribusikan. Menunggu ${resCount.count} tab pekerja menyelesaikan tugas...`, 'info');
+            chrome.storage.local.set({ waitingForWorkers: true });
+          } else {
+            // Cek apakah seluruh baris di portal sudah ada dan Complete
+            const rows = document.querySelectorAll('table tbody tr');
+            let totalFoundInPortal = 0;
+            let totalCompletedInPortal = 0;
+
+            res.excelData.forEach(item => {
+              let found = false;
+              const hasGateOut = item.gateOutTime && String(item.gateOutTime).trim() !== "";
+              for (const r of rows) {
+                if (DOMUtils.isRowMatchNopol(r, item.nopol)) {
+                  found = true;
+                  const txt = r.innerText.toLowerCase();
+                  const is100 = txt.includes('complete') || txt.includes('selesai') || txt.includes('100%');
+                  const isInProgress = txt.includes('in progress') || txt.includes('33%') || txt.includes('66%');
+                  if (is100 || (!hasGateOut && isInProgress)) {
+                    totalCompletedInPortal++;
+                  }
+                  break;
+                }
+              }
+              if (found) totalFoundInPortal++;
+            });
+
+            // Sinkronkan jumlah truk Complete real-time ke Popup UI
+            chrome.storage.local.set({ completedCount: totalCompletedInPortal });
+
+            if (totalFoundInPortal < res.excelData.length || totalCompletedInPortal < res.excelData.length) {
+              Logger.log(`[Master Dispatcher] Re-scan Portal: Terdeteksi ${totalFoundInPortal}/${res.excelData.length} truk di portal (${totalCompletedInPortal} Selesai). Mengulang pemindaian dari baris ke-1 untuk mendaftarkan truk yang terlewati...`, 'warn');
+              chrome.storage.local.set({ currentIndex: 0, autofillStage: 'CREATE_PENYALURAN' }, () => {
+                setTimeout(() => window.location.reload(), 2000);
+              });
+            } else {
+              Logger.log(`[Master Dispatcher] Seluruh transaksi (${res.excelData.length}/${res.excelData.length} truk) dan seluruh Tab Pekerja telah selesai terdaftar & berstatus Complete!`, 'success');
+              chrome.storage.local.set({ autofillActive: false, waitingForWorkers: false, completedCount: res.excelData.length });
+            }
+          }
+        });
         return;
       }
 
@@ -1451,6 +1779,43 @@ class AutofillEngine {
 
     Logger.log(`Memproses Baris ${index + 1}/${total} - No Polisi: ${rowData.nopol} | Stage saat ini: ${stage} | Path: ${path}`, 'system');
 
+    // Nopol Guard untuk Tab Pekerja / Form Handlers (Kecuali ListPageHandler)
+    const isList = path.includes('penyaluranlist') || path.includes('penyaluran_list') || document.getElementById('btn-add-penyaluran');
+    if (!isList) {
+      const pageNopol = DOMUtils.getPageNopol();
+      if (pageNopol && rowData && rowData.nopol) {
+        const normPage = DOMUtils.normalizeNopol(pageNopol);
+        const normRow = DOMUtils.normalizeNopol(rowData.nopol);
+
+        if (normPage && normPage !== normRow) {
+          Logger.log(`[Nopol Guard] Perhatian: Plat nomor di layar web (${pageNopol}) berbeda dari konteks (${rowData.nopol}). Mencari kecocokan di data Excel...`, 'warn');
+          chrome.storage.local.get(['excelData'], (resEx) => {
+            const excelData = resEx.excelData || [];
+            const matchedItem = excelData.find(item => DOMUtils.normalizeNopol(item.nopol) === normPage);
+            if (matchedItem) {
+              Logger.log(`[Nopol Guard] Koreksi Otomatis: Sinkronisasi data ke plat ${matchedItem.nopol} dari Excel!`, 'success');
+              rowData = matchedItem;
+              if (WorkerContextManager.isWorker()) {
+                WorkerContextManager.context.rowData = matchedItem;
+                sessionStorage.setItem('worker_context', JSON.stringify(WorkerContextManager.context));
+              }
+              this.dispatchStageHandler(rowData, stage, tankConfigs, compPos, path);
+            } else {
+              Logger.log(`[Nopol Guard Error] Plat ${pageNopol} di layar web tidak ditemukan pada data Excel! Batal mengisikan data untuk mencegah salah data.`, 'error');
+              if (WorkerContextManager.isWorker()) {
+                chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+              }
+            }
+          });
+          return;
+        }
+      }
+    }
+
+    this.dispatchStageHandler(rowData, stage, tankConfigs, compPos, path);
+  }
+
+  dispatchStageHandler(rowData, stage, tankConfigs, compPos, path) {
     if (path.includes('penyaluranlist') || path.includes('penyaluran_list') || document.getElementById('btn-add-penyaluran')) {
       this.listHandler.handle(rowData, stage);
     }
