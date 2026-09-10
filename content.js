@@ -589,7 +589,7 @@ class ListPageHandler extends BasePageHandler {
           if (isComplete) {
             hasCompleteRow = true;
           } else {
-            const link = r.querySelector('[id*="LinkProses"] a, td.el_Penyaluran_LinkProses a, a[href*="proses"]');
+            const link = r.querySelector('[id*="LinkProses"] a, td.el_Penyaluran_LinkProses a, [id*="LinkAktivitas"] a, td[data-name="LinkAktivitas"] a, a[href*="proses"], a[href*="aktivitas"]');
             if (link) {
               hasIncompleteRow = true;
               incompleteLink = link;
@@ -802,30 +802,39 @@ class ProcessBridgePageHandler extends BasePageHandler {
 
       // Mengambil semua link <a> yang memiliki href di dalam baris
       const links = Array.from(row.querySelectorAll('a[href]'));
-
       const isIgnoredLink = (href) => {
         return href.includes('aktivitasedit') ||
           href.includes('aktivitasview') ||
           href.includes('aktivitasdokumenlist') ||
           href.includes('dokumenlist') ||
-          href.includes('showdetail');
+          href.includes('dokumen') ||
+          href.includes('showdetail') ||
+          href.includes('showmaster');
       };
 
-      // Prioritas 1: Link yang href-nya mengandung 'subaktivitas' atau 'aktivitastabel'
+      // Prioritas 1: Link subaktivitas spesifik (seperti SubAktivitasDataMobilTangkiMTGateInEdit / subaktivitas / gatein)
       let link = links.find(a => {
         const href = (a.getAttribute('href') || '').toLowerCase();
-        return (href.includes('subaktivitas') || href.includes('aktivitastabel')) && !isIgnoredLink(href);
+        return (href.includes('subaktivitas') || href.includes('gateinedit') || href.includes('mtgatein')) && !isIgnoredLink(href);
       });
 
-      // Prioritas 2: Link lain yang BUKAN link master/dokumen yang di-ignore
+      // Prioritas 2: Link tabel/proses (seperti aktivitastabel, aktivitaspenyaluran) yang BUKAN dokumen
       if (!link) {
         link = links.find(a => {
           const href = (a.getAttribute('href') || '').toLowerCase();
-          return !isIgnoredLink(href) && (href.includes('edit') || href.includes('add') || href.includes('detail') || href.includes('proses') || href.includes('tabel'));
+          return (href.includes('aktivitastabel') || href.includes('aktivitaspenyaluran')) && !isIgnoredLink(href);
         });
       }
 
-      // Prioritas 3: Link pertama di baris yang bukan link kosong/anchor dummy (# / javascript) dan bukan link di-ignore
+      // Prioritas 3: Link edit/add/proses umum yang BUKAN dokumen
+      if (!link) {
+        link = links.find(a => {
+          const href = (a.getAttribute('href') || '').toLowerCase();
+          return !isIgnoredLink(href) && (href.includes('edit') || href.includes('add') || href.includes('detail') || href.includes('proses') || href.includes('tabel') || href.includes('aktivitas'));
+        });
+      }
+
+      // Prioritas 4: Link pertama di baris yang bukan link kosong/anchor dummy (# / javascript) dan bukan link di-ignore
       if (!link) {
         link = links.find(a => {
           const href = (a.getAttribute('href') || '').toLowerCase();
@@ -904,18 +913,18 @@ class ProcessBridgePageHandler extends BasePageHandler {
 
     if (!linkToClick) {
       const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a[href]'));
-      // Prioritaskan link subaktivitas / aktivitastabel di seluruh tabel yang belum completed
+      // Prioritaskan link subaktivitas / gatein / aktivitastabel / aktivitaspenyaluran di seluruh tabel yang belum completed
       linkToClick = bodyLinks.find(l => {
         const href = (l.getAttribute('href') || '').toLowerCase();
-        if (!href.includes('subaktivitas') && !href.includes('aktivitastabel')) return false;
-        if (href.includes('dokumenlist')) return false;
+        if (href.includes('dokumen') || href.includes('showmaster') || href.includes('showdetail')) return false;
+        if (!href.includes('subaktivitas') && !href.includes('gatein') && !href.includes('aktivitastabel') && !href.includes('aktivitaspenyaluran')) return false;
         const row = l.closest('tr');
         if (!row) return false;
         const rowText = row.textContent.toLowerCase();
         return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
       }) || bodyLinks.find(l => {
         const href = (l.getAttribute('href') || '').toLowerCase();
-        if (href.includes('aktivitasedit') || href.includes('aktivitasview') || href.includes('dokumenlist') || href.includes('showdetail')) return false;
+        if (href.includes('dokumen') || href.includes('showmaster') || href.includes('aktivitasedit') || href.includes('aktivitasview') || href.includes('showdetail')) return false;
         const row = l.closest('tr');
         if (!row) return false;
         const rowText = row.textContent.toLowerCase();
@@ -1816,18 +1825,23 @@ class AutofillEngine {
   }
 
   dispatchStageHandler(rowData, stage, tankConfigs, compPos, path) {
-    if (path.includes('penyaluranlist') || path.includes('penyaluran_list') || document.getElementById('btn-add-penyaluran')) {
+    if (path.includes('prosespenyaluranlist') || path.includes('aktivitaspenyaluranlist') ||
+      path.includes('aktivitaslist') || path.includes('aktivitas_list') ||
+      path.includes('proseslist') || path.includes('proses_list') ||
+      document.getElementById('el1_ProsesPenyaluran_LinkAktivitas') ||
+      document.getElementById('el1_Aktivitas_Aktivitas2') || document.getElementById('el1_Proses_Aktivitas2')) {
+      this.processBridgeHandler.handle(rowData, stage);
+    }
+    else if (path.includes('penyaluranlist') || path.includes('penyaluran_list') || document.getElementById('btn-add-penyaluran')) {
       this.listHandler.handle(rowData, stage);
     }
     else if (path.includes('penyaluranadd') || path.includes('penyaluran_add')) {
       this.penyaluranAddHandler.handle(rowData, stage);
     }
-    else if (path.includes('aktivitaslist') || path.includes('aktivitas_list') ||
-      path.includes('proseslist') || path.includes('proses_list') ||
-      document.getElementById('el1_Aktivitas_Aktivitas2') || document.getElementById('el1_Proses_Aktivitas2')) {
-      this.processBridgeHandler.handle(rowData, stage);
-    }
-    else if (document.getElementById('el_SubAktivitasDataMobilTangkiMTGateIn_AMT') || path.includes('gatein')) {
+    else if (document.getElementById('el_SubAktivitasDataMobilTangkiMTGateIn_AMT') ||
+      document.getElementById('x_AMT') || document.getElementById('x_SubAktivitasDataMobilTangkiMTGateIn_AMT') ||
+      document.getElementById('x_WaktuGateIn') || document.getElementById('x_SubAktivitasDataMobilTangkiMTGateIn_WaktuGateIn') ||
+      path.includes('gatein') || path.includes('gate_in')) {
       this.gateInHandler.handle(rowData, stage);
     }
     else if (path.includes('pengisian') || path.includes('aktivitastabel') || document.getElementById('btn-add-modal') || document.querySelector('#form_input_modal, select#NomorTangki, .modal.show')) {
