@@ -110,8 +110,6 @@ class TankConfigManager {
       'PERTAMAX': '3',
       'BIOSOLAR B50_1': '15',
       'BIOSOLAR B50_2': '8',
-      'DEXLITE_1': '15',
-      'DEXLITE_2': '8',
       'PERTADEX': '17',
       'PERTAMAX TURBO': '19',
       'AVTUR': '6'
@@ -169,6 +167,92 @@ class ExcelParser {
     this.btnStart = btnStart;
   }
 
+  static allocateLOsToProducts(loList, produkList) {
+    if (!produkList || produkList.length === 0) {
+      produkList = ['PERTALITE'];
+    }
+    if (!loList) loList = [];
+
+    const items = [];
+
+    // Skenario 1: 1 Produk (atau 0 produk) -> Seluruh LO dimasukkan sekaligus ke 1 produk
+    if (produkList.length === 1) {
+      const prod = produkList[0];
+      items.push({
+        produk: prod,
+        loList: loList,
+        combinedLO: loList.join(', ')
+      });
+      return items;
+    }
+
+    // Skenario 2: Jumlah Produk = Jumlah LO
+    if (loList.length === produkList.length) {
+      for (let i = 0; i < produkList.length; i++) {
+        items.push({
+          produk: produkList[i],
+          loList: [loList[i]],
+          combinedLO: loList[i]
+        });
+      }
+      return items;
+    }
+
+    // Skenario 3: Jumlah LO > Jumlah Produk (misal 3 LO, 2 Produk)
+    if (loList.length > produkList.length) {
+      const isSubsidi = (pName) => {
+        const u = (pName || '').toUpperCase();
+        return u.includes('PERTALITE') || u.includes('SOLAR') || u.includes('BIOSOLAR');
+      };
+
+      const loCounts = new Array(produkList.length).fill(1);
+      let remainingLOs = loList.length - produkList.length;
+
+      const subsidiIndices = [];
+      for (let i = 0; i < produkList.length; i++) {
+        if (isSubsidi(produkList[i])) {
+          subsidiIndices.push(i);
+        }
+      }
+
+      const targetIndices = subsidiIndices.length > 0 ? subsidiIndices : [0];
+      let targetIdxPointer = 0;
+      while (remainingLOs > 0) {
+        const idxToGive = targetIndices[targetIdxPointer % targetIndices.length];
+        loCounts[idxToGive]++;
+        remainingLOs--;
+        targetIdxPointer++;
+      }
+
+      let loPointer = 0;
+      for (let i = 0; i < produkList.length; i++) {
+        const count = loCounts[i];
+        const assignedLOs = loList.slice(loPointer, loPointer + count);
+        loPointer += count;
+
+        items.push({
+          produk: produkList[i],
+          loList: assignedLOs,
+          combinedLO: assignedLOs.join(', ')
+        });
+      }
+
+      return items;
+    }
+
+    // Skenario 4: Jumlah LO < Jumlah Produk
+    for (let i = 0; i < produkList.length; i++) {
+      const assignedLOs = i < loList.length ? [loList[i]] : [];
+      items.push({
+        produk: produkList[i],
+        loList: assignedLOs,
+        combinedLO: assignedLOs.join(', ')
+      });
+    }
+
+    return items;
+  }
+
   parseFile(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -224,20 +308,33 @@ class ExcelParser {
           }
 
           let cleanProduct = String(rawProduct || '').trim().replace(/[;,\s]+$/, '').toUpperCase();
+          let produkList = String(rawProduct || '')
+            .split(/[;,]/)
+            .map(s => s.trim().toUpperCase())
+            .filter(s => s.length > 0);
+
+          if (produkList.length === 0 && cleanProduct) {
+            produkList = [cleanProduct];
+          }
+
           let loList = String(rawLO || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
           let segelList = String(rawSegel || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
           let cleanDateShipment = DateFormatter.formatExcelDate(rawDateShipment);
           let cleanGateOut = DateFormatter.formatExcelDate(rawGateOut);
+
+          let itemsList = ExcelParser.allocateLOsToProducts(loList, produkList);
 
           return {
             rowNum: idx + 1,
             nopol: String(rawNopol || '').replace(/\s+/g, '').toUpperCase().trim(),
             supir: String(rawSupir || '').trim(),
             volume: parseFloat(rawVol || '0') || 0,
-            produk: cleanProduct,
+            produk: produkList[0] || cleanProduct || '',
+            produkList: produkList,
             gateInTime: cleanDateShipment,
             gateOutTime: cleanGateOut,
             loList: loList,
+            itemsList: itemsList,
             segelList: segelList
           };
         }).filter(r => r.nopol !== "");
@@ -290,8 +387,6 @@ class PopupAppManager {
       'PERTAMAX': document.getElementById('tank-pertamax'),
       'BIOSOLAR B50_1': document.getElementById('tank-solar-1'),
       'BIOSOLAR B50_2': document.getElementById('tank-solar-2'),
-      'DEXLITE_1': document.getElementById('tank-dexlite-1'),
-      'DEXLITE_2': document.getElementById('tank-dexlite-2'),
       'PERTADEX': document.getElementById('tank-pertadex'),
       'PERTAMAX TURBO': document.getElementById('tank-turbo'),
       'AVTUR': document.getElementById('tank-avtur')

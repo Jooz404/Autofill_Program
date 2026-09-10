@@ -1284,7 +1284,17 @@ class PengisianPageHandler extends BasePageHandler {
 
       chrome.storage.local.get(['subIdx'], (result) => {
         let subIdx = isWorker ? WorkerContextManager.getSubIdx() : (result.subIdx || 0);
-        const totalLO = rowData.loList.length;
+
+        // Membaca item pengisian hasil alokasi LO-Produk
+        const itemsList = (rowData.itemsList && rowData.itemsList.length > 0)
+          ? rowData.itemsList
+          : [{
+              produk: rowData.produk || '',
+              loList: rowData.loList || [],
+              combinedLO: (rowData.loList || []).join(', ')
+            }];
+
+        const totalItems = itemsList.length;
 
         // Inspeksi tabel draf Pengisian yang sudah terisi di portal
         const detailTableRows = Array.from(document.querySelectorAll('#tbl_detail_pengisian tbody tr, table.ew-table tbody tr, table tbody tr')).filter(r => {
@@ -1295,8 +1305,8 @@ class PengisianPageHandler extends BasePageHandler {
         });
         const existingCount = detailTableRows.length;
 
-        if (existingCount > subIdx && existingCount <= totalLO) {
-          Logger.log(`Deteksi Draf: ${existingCount} item LO sudah ada di tabel Pengisian. Menyesuaikan subIdx ke-${existingCount}...`, 'info');
+        if (existingCount > subIdx && existingCount <= totalItems) {
+          Logger.log(`Deteksi Draf: ${existingCount} item produk sudah ada di tabel Pengisian. Menyesuaikan subIdx ke-${existingCount}...`, 'info');
           subIdx = existingCount;
           chrome.storage.local.set({ subIdx: existingCount });
         }
@@ -1305,7 +1315,7 @@ class PengisianPageHandler extends BasePageHandler {
         const modalEl = document.querySelector('.modal.show, .modal-dialog, #form_input_modal, #row_NomorTangki, select#NomorTangki');
         const isModalOpen = modalEl && DOMUtils.isVisible(modalEl);
 
-        if (subIdx < totalLO) {
+        if (subIdx < totalItems) {
           if (!isModalOpen) {
             const addBtn = document.getElementById('btn-add-modal') ||
               document.querySelector('button[id*="add"]') ||
@@ -1313,25 +1323,26 @@ class PengisianPageHandler extends BasePageHandler {
               Array.from(document.querySelectorAll('button, a')).find(b => DOMUtils.isVisible(b) && (b.textContent.includes('Add') || b.textContent.includes('Tambah')));
 
             if (addBtn) {
-              Logger.log(`Membuka modal untuk item pengisian LO ke-${subIdx + 1}/${totalLO} dalam ${this.stepDelay / 1000} detik...`, 'info');
+              Logger.log(`Membuka modal untuk item pengisian produk ke-${subIdx + 1}/${totalItems} dalam ${this.stepDelay / 1000} detik...`, 'info');
               setTimeout(() => addBtn.click(), this.stepDelay);
             } else {
               Logger.log('Tombol Add Modal (#btn-add-modal / + Add) tidak terdeteksi di halaman.', 'error');
             }
           } else {
-            Logger.log(`Mengisi detail Modal Pengisian item ke-${subIdx + 1}/${totalLO}...`, 'info');
+            Logger.log(`Mengisi detail Modal Pengisian item ke-${subIdx + 1}/${totalItems}...`, 'info');
 
             // Kunci siklus polling 1.5 detik selama proses async ini berjalan
             window._autofillLockUntil = Date.now() + 20000;
 
-            const activeLO = rowData.loList[subIdx];
-            const activeProduct = rowData.produk;
+            const activeItem = itemsList[subIdx];
+            const activeLO = activeItem.combinedLO || (activeItem.loList || []).join(', ');
+            const activeProduct = activeItem.produk;
 
             // Jalankan pengisian berurutan
-            this.executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalLO, subIdx, compPos);
+            this.executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalItems, subIdx, compPos);
           }
         } else {
-          Logger.log(`Seluruh baris detail LO (${totalLO} item) selesai dimasukkan/tersedia di draf. Menyiapkan Save Draft & Submit final...`, 'success');
+          Logger.log(`Seluruh baris detail produk (${totalItems} item) selesai dimasukkan/tersedia di draf. Menyiapkan Save Draft & Submit final...`, 'success');
           const saveBtn = document.getElementById('btn-save') || document.querySelector('button[data-nextstatus="Draft"]');
           const finalSubmitBtn = document.getElementById('btn-submit') || document.querySelector('button[data-nextstatus="Completed"]') || document.querySelector('button.btn-success');
 
@@ -1407,12 +1418,9 @@ class PengisianPageHandler extends BasePageHandler {
     let tank2Val = "15";
     const pUpper = activeProduct.trim().toUpperCase();
 
-    if (pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR')) {
+    if (pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR') || pUpper.includes('DEXLITE')) {
       tank1Val = tankConfigs['BIOSOLAR B50_1'] || tankConfigs['BIOSOLAR'] || '5';
       tank2Val = tankConfigs['BIOSOLAR B50_2'] || '15';
-    } else if (pUpper.includes('DEXLITE')) {
-      tank1Val = tankConfigs['DEXLITE_1'] || tankConfigs['DEXLITE'] || '5';
-      tank2Val = tankConfigs['DEXLITE_2'] || '15';
     } else if (pUpper.includes('PERTALITE')) {
       tank1Val = tankConfigs['PERTALITE'] || '1';
     } else if (pUpper.includes('PERTAMAX') && !pUpper.includes('TURBO')) {
@@ -1439,17 +1447,21 @@ class PengisianPageHandler extends BasePageHandler {
     }
     await new Promise(r => setTimeout(r, 700));
 
-    // d. Produk Utama — DISET PALING AKHIR (dengan verifikasi & proteksi AJAX override)
+    // d. Produk Utama — Hanya dilakukan pencarian otomatis via dropdown Select2 untuk SOLAR & DEXLITE
+    const needsProductSelect = pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR') || pUpper.includes('DEXLITE');
     const productSelect = document.getElementById('Produk') || document.getElementById('x_IdProduk') || document.querySelector('select[id*="Produk"]');
-    if (productSelect) {
+
+    if (needsProductSelect && productSelect) {
       await this.setProdukAndVerify(productSelect, activeProduct, 2000, 200);
+    } else {
+      Logger.log(`[Skip Produk Dropdown] Produk "${activeProduct}" otomatis menyesuaikan berdasarkan pilihan Tangki.`, 'info');
     }
 
     // e. Quantity, Meter, Bay Number & Kompartemen
     this.fillMetersAndQuantity(activeProduct, rowData, totalLO, subIdx, compPos);
 
-    // f. Verifikasi akhir Produk
-    if (productSelect) {
+    // f. Verifikasi akhir Produk (hanya jika butuh pencarian otomatis)
+    if (needsProductSelect && productSelect) {
       const finalText = productSelect.options[productSelect.selectedIndex]?.text || "";
       if (finalText.includes(activeProduct) || (activeProduct.includes('BIOSOLAR') && finalText.includes('A040900219'))) {
         Logger.log(`🎯 VERIFIKASI PRODUK OK: "${finalText}"`, 'success');
@@ -1531,7 +1543,7 @@ class PengisianPageHandler extends BasePageHandler {
     }
   }
 
-  fillMetersAndQuantity(product, rowData, totalLO, subIdx, compPos) {
+  fillMetersAndQuantity(product, rowData, totalItems, subIdx, compPos) {
     let bayVal = "1";
     let meterVal = "1";
 
@@ -1558,7 +1570,7 @@ class PengisianPageHandler extends BasePageHandler {
     }
 
     const volInput = document.getElementById('Volume') || document.getElementById('Quantity') || document.querySelector('input[name*="Volume"], input[id*="Volume"], input[name*="Quantity"]');
-    const pieceVolume = (rowData.volume / totalLO) * 1000;
+    const pieceVolume = (rowData.volume / (totalItems || 1)) * 1000;
     if (volInput) {
       volInput.value = pieceVolume;
       volInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1566,7 +1578,7 @@ class PengisianPageHandler extends BasePageHandler {
       Logger.log(`Set Volume: ${pieceVolume} Liter`, 'info');
     }
 
-    const numCompNeeded = Math.ceil((rowData.volume / totalLO) / 8);
+    const numCompNeeded = Math.ceil((rowData.volume / (totalItems || 1)) / 8);
     const comps = [];
     const baseComp = compPos || 1;
     for (let i = 0; i < numCompNeeded; i++) {
