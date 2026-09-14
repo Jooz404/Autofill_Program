@@ -489,34 +489,50 @@ class DOMUtils {
   }
 
   static isActivityStatusCompleted() {
-    // 1. Cari elemen yang mengandung teks "Completed" / "Selesai" di area status
-    const candidates = document.querySelectorAll(
-      '[id*="StatusAktivitas"], [id*="status"], .alert, .badge, .text-success, .bg-success, span, div'
-    );
+    const isExcluded = (el) => {
+      return !!el.closest('.stepper, .step, .bs-stepper, .breadcrumb, .main-header, .main-sidebar, .navbar, header, nav, footer');
+    };
 
-    for (let el of candidates) {
-      if (!DOMUtils.isVisible(el)) continue;
-      const text = el.textContent.trim().toLowerCase();
-      if (text === 'completed' || text === 'selesai' ||
-        text.includes('✓ completed') || text.includes('completed') && text.length < 30) {
+    // 1. Prioritas Utama: Cari ID / elemen spesifik Status Aktivitas
+    const statusEl = document.getElementById('x_StatusAktivitas') ||
+      document.querySelector('[id*="StatusAktivitas"]') ||
+      document.querySelector('.el_StatusAktivitas, .el_Aktivitas_StatusAktivitas');
+
+    if (statusEl && DOMUtils.isVisible(statusEl) && !isExcluded(statusEl)) {
+      const text = (statusEl.value || statusEl.textContent || '').trim().toLowerCase();
+      if (text === 'completed' || text === 'selesai' || text.includes('✓ completed')) {
         return true;
+      }
+      if (text === 'waiting' || text === 'in progress' || text.includes('draft') || text.includes('proses')) {
+        return false;
       }
     }
 
-    // 2. Cek baris yang punya label "Status Aktivitas"
+    // 2. Cari berdasarkan label "Status Aktivitas" secara presisi
     const labels = Array.from(document.querySelectorAll('label, td, th, div, span'));
     for (let label of labels) {
-      if (label.textContent.trim().toLowerCase() === 'status aktivitas') {
+      if (isExcluded(label)) continue;
+      const labelText = label.textContent.trim().toLowerCase();
+      if (labelText === 'status aktivitas' || labelText === 'status aktivitas:') {
         const parent = label.closest('.row, tr, .form-group, div') || label.parentElement;
         if (parent) {
-          const rowText = parent.textContent.toLowerCase();
-          if (rowText.includes('completed') || rowText.includes('selesai')) {
-            return true;
+          const valueEls = Array.from(parent.querySelectorAll('.badge, .text-success, .bg-success, span, td, div'))
+            .filter(e => e !== label && !e.contains(label) && DOMUtils.isVisible(e) && !isExcluded(e));
+
+          for (let vEl of valueEls) {
+            const vText = vEl.textContent.trim().toLowerCase();
+            if (vText === 'completed' || vText === 'selesai' || vText.includes('✓ completed')) {
+              return true;
+            }
+            if (vText === 'waiting' || vText === 'in progress' || vText.includes('draft') || vText.includes('proses')) {
+              return false;
+            }
           }
         }
       }
     }
 
+    // Jika tidak ada elemen status yang terkonfirmasi "Completed", jangan berasumsi True
     return false;
   }
 
@@ -678,7 +694,13 @@ class ListPageHandler extends BasePageHandler {
         if (addBtn) {
           Logger.log(`Plat ${rowData.nopol} tidak ditemukan di list. Menambahkan transaksi baru (+ Add New)...`, 'info');
           window._autofillLockUntil = Date.now() + this.stepDelay + 5000;
-          chrome.storage.local.set({ autofillStage: 'CREATE_PENYALURAN' }, () => {
+          chrome.storage.local.set({
+            autofillStage: 'CREATE_PENYALURAN',
+            pengisianSubmitted: false,
+            gateInSubmitted: false,
+            gateOutSubmitted: false,
+            subIdx: 0
+          }, () => {
             setTimeout(() => addBtn.click(), this.stepDelay);
           });
         } else {
@@ -1318,13 +1340,17 @@ class PengisianPageHandler extends BasePageHandler {
         if (subIdx < totalItems) {
           if (!isModalOpen) {
             const addBtn = document.getElementById('btn-add-modal') ||
-              document.querySelector('button[id*="add"]') ||
-              document.querySelector('.btn-primary') ||
-              Array.from(document.querySelectorAll('button, a')).find(b => DOMUtils.isVisible(b) && (b.textContent.includes('Add') || b.textContent.includes('Tambah')));
+              document.querySelector('button#btn-add-modal') ||
+              document.querySelector('button[id*="btn-add-modal"]') ||
+              document.querySelector('button[id*="add-modal"]') ||
+              document.querySelector('.btn-success[id*="add"]') ||
+              Array.from(document.querySelectorAll('button, a')).find(b => DOMUtils.isVisible(b) &&
+                !b.closest('.stepper, nav, header') &&
+                (b.id.includes('add-modal') || b.textContent.trim().startsWith('+ Add') || b.textContent.trim() === 'Add New' || b.textContent.trim() === '+ Tambah'));
 
             if (addBtn) {
               Logger.log(`Membuka modal untuk item pengisian produk ke-${subIdx + 1}/${totalItems} dalam ${this.stepDelay / 1000} detik...`, 'info');
-              setTimeout(() => addBtn.click(), this.stepDelay);
+              setTimeout(() => DOMUtils.clickElement(addBtn), this.stepDelay);
             } else {
               Logger.log('Tombol Add Modal (#btn-add-modal / + Add) tidak terdeteksi di halaman.', 'error');
             }

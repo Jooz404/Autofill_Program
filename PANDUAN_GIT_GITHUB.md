@@ -50,11 +50,49 @@ git remote add origin https://github.com/username/Project-Autofill-RSD.git
 
 Lakukan 3 langkah ini **setiap kali Anda menyelesaikan suatu fitur/perbaikan** yang sudah berjalan lancar:
 
-### Langkah 3.1: Cek File yang Diubah
+### Langkah 3.1: Cek Status Project & Perubahan (Apakah Sudah Di-commit?)
+Gunakan perintah berikut kapan saja Anda ragu dengan kondisi file proyek:
 ```bash
 git status
 ```
-*Akan menampilkan daftar file yang baru ditambahkan atau dimodifikasi (berwarna merah).*
+
+#### Cara Membaca Output `git status`:
+
+1. **SUDAH DI-COMMIT (Kondisi Bersih / Clean)**
+   ```text
+   On branch main
+   nothing to commit, working tree clean
+   ```
+   * Artinya: **Seluruh perubahan terbaru sudah di-commit.** Tidak ada kode yang tertinggal atau belum disimpan.
+
+2. **SUDAH DI-COMMIT LOKAL, TAPI BELUM DI-PUSH KE GITHUB**
+   ```text
+   On branch main
+   Your branch is ahead of 'origin/main' by 1 commit.
+     (use "git push" to publish your local commits)
+   nothing to commit, working tree clean
+   ```
+   * Artinya: **Sudah di-commit di komputer lokal, tetapi belum di-upload ke GitHub.** Anda tinggal menjalankan `git push origin main`.
+
+3. **ADA PERUBAHAN YANG BELUM DI-COMMIT (File Modifikasi/Baru)**
+   ```text
+   Changes not staged for commit:
+     (use "git add <file>..." to update what will be committed)
+       modified:   content.js
+
+   Untracked files:
+     (use "git add <file>..." to include in what will be committed)
+       fitur_baru.js
+   ```
+   * Teks berwarna **Merah** (`modified` atau `Untracked files`) artinya: **Ada perubahan yang BELUM di-commit!** Anda perlu menjalankan `git add .` lalu `git commit -m "..."`.
+
+4. **FILE SUDAH DI-STAGING, TINGGAL DI-COMMIT**
+   ```text
+   Changes to be committed:
+       modified:   content.js
+       new file:   fitur_baru.js
+   ```
+   * Teks berwarna **Hijau** artinya: **Perubahan sudah ditandai (`git add .`), tinggal di-commit.** Jalankan `git commit -m "pesan"`.
 
 ### Langkah 3.2: Tandai Perubahan untuk Disimpan (Stage)
 ```bash
