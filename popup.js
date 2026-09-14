@@ -167,16 +167,31 @@ class ExcelParser {
     this.btnStart = btnStart;
   }
 
-  static allocateLOsToProducts(loList, produkList) {
+  static allocateLOsToProducts(loList, produkList, excelVolume = 0) {
     if (!produkList || produkList.length === 0) {
       produkList = ['PERTALITE'];
     }
     if (!loList) loList = [];
 
-    const items = [];
+    // Normalisasi volume dari Excel ke KL
+    const normExcelKL = (vol) => {
+      if (!vol || isNaN(vol) || vol <= 0) return 0;
+      return vol > 500 ? vol / 1000 : vol;
+    };
+    const totalKLFromExcel = normExcelKL(excelVolume);
 
-    // Helper hitung volume KL per item berbasis jumlah LO
-    const getVol = (assignedLOs) => {
+    const items = [];
+    const totalLOs = loList.length;
+
+    // Helper hitung volume KL per item: Utamakan volume Excel jika tersedia
+    const getVol = (assignedLOs, totalProds = 1) => {
+      if (totalKLFromExcel > 0) {
+        if (totalLOs > 0 && assignedLOs && assignedLOs.length > 0) {
+          return (assignedLOs.length / totalLOs) * totalKLFromExcel;
+        } else {
+          return totalKLFromExcel / totalProds;
+        }
+      }
       return (assignedLOs && assignedLOs.length > 0) ? assignedLOs.length * 8 : 8;
     };
 
@@ -187,7 +202,7 @@ class ExcelParser {
         produk: prod,
         loList: loList,
         combinedLO: loList.join(', '),
-        volume: getVol(loList)
+        volume: getVol(loList, 1)
       });
       return items;
     }
@@ -200,7 +215,7 @@ class ExcelParser {
           produk: produkList[i],
           loList: assigned,
           combinedLO: loList[i],
-          volume: getVol(assigned)
+          volume: getVol(assigned, produkList.length)
         });
       }
       return items;
@@ -242,7 +257,7 @@ class ExcelParser {
           produk: produkList[i],
           loList: assignedLOs,
           combinedLO: assignedLOs.join(', '),
-          volume: getVol(assignedLOs)
+          volume: getVol(assignedLOs, produkList.length)
         });
       }
 
@@ -256,7 +271,7 @@ class ExcelParser {
         produk: produkList[i],
         loList: assignedLOs,
         combinedLO: assignedLOs.join(', '),
-        volume: getVol(assignedLOs)
+        volume: getVol(assignedLOs, produkList.length)
       });
     }
 
@@ -330,15 +345,14 @@ class ExcelParser {
           let loList = String(rawLO || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
           let segelList = String(rawSegel || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
           let cleanDateShipment = DateFormatter.formatExcelDate(rawDateShipment);
-          let cleanGateOut = DateFormatter.formatExcelDate(rawGateOut);
-
-          let itemsList = ExcelParser.allocateLOsToProducts(loList, produkList);
+          let parsedVol = parseFloat(rawVol || '0') || 0;
+          let itemsList = ExcelParser.allocateLOsToProducts(loList, produkList, parsedVol);
 
           return {
             rowNum: idx + 1,
             nopol: String(rawNopol || '').replace(/\s+/g, '').toUpperCase().trim(),
             supir: String(rawSupir || '').trim(),
-            volume: parseFloat(rawVol || '0') || 0,
+            volume: parsedVol,
             produk: produkList[0] || cleanProduct || '',
             produkList: produkList,
             gateInTime: cleanDateShipment,

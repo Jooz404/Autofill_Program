@@ -1648,21 +1648,23 @@ class PengisianPageHandler extends BasePageHandler {
 
     // Normalisasi volume ke KL
     const normalizeKL = (vol) => {
-      if (!vol || isNaN(vol)) return 0;
+      if (!vol || isNaN(vol) || vol <= 0) return 0;
       return vol > 500 ? vol / 1000 : vol;
     };
 
     const itemsList = (rowData && rowData.itemsList && rowData.itemsList.length > 0) ? rowData.itemsList : [];
 
-    // Hitung volume item saat ini (dalam KL)
+    // Hitung volume item saat ini (dalam KL) — Utamakan volume spesifik Excel
     let currentKL = 0;
-    if (activeItem && activeItem.loList && activeItem.loList.length > 0) {
-      currentKL = activeItem.loList.length * 8;
-    } else if (activeItem && activeItem.volume) {
+    if (activeItem && activeItem.volume && activeItem.volume > 0) {
       currentKL = normalizeKL(activeItem.volume);
-    } else if (rowData && rowData.volume) {
+    } else if (rowData && rowData.volume && rowData.volume > 0) {
       const truckKL = normalizeKL(rowData.volume);
-      currentKL = truckKL / (totalItems || 1);
+      const itemLOs = (activeItem && activeItem.loList && activeItem.loList.length > 0) ? activeItem.loList.length : 1;
+      const totalLOs = itemsList.reduce((acc, it) => acc + ((it.loList && it.loList.length) ? it.loList.length : 1), 0);
+      currentKL = (itemLOs / (totalLOs || 1)) * truckKL;
+    } else if (activeItem && activeItem.loList && activeItem.loList.length > 0) {
+      currentKL = activeItem.loList.length * 8;
     } else {
       currentKL = 8;
     }
@@ -1682,12 +1684,15 @@ class PengisianPageHandler extends BasePageHandler {
     for (let i = 0; i < subIdx; i++) {
       const prevItem = itemsList[i];
       let prevKL = 0;
-      if (prevItem && prevItem.loList && prevItem.loList.length > 0) {
-        prevKL = prevItem.loList.length * 8;
-      } else if (prevItem && prevItem.volume) {
+      if (prevItem && prevItem.volume && prevItem.volume > 0) {
         prevKL = normalizeKL(prevItem.volume);
-      } else if (rowData && rowData.volume) {
-        prevKL = normalizeKL(rowData.volume) / (totalItems || 1);
+      } else if (rowData && rowData.volume && rowData.volume > 0) {
+        const truckKL = normalizeKL(rowData.volume);
+        const prevLOs = (prevItem && prevItem.loList && prevItem.loList.length > 0) ? prevItem.loList.length : 1;
+        const totalLOs = itemsList.reduce((acc, it) => acc + ((it.loList && it.loList.length) ? it.loList.length : 1), 0);
+        prevKL = (prevLOs / (totalLOs || 1)) * truckKL;
+      } else if (prevItem && prevItem.loList && prevItem.loList.length > 0) {
+        prevKL = prevItem.loList.length * 8;
       } else {
         prevKL = 8;
       }
