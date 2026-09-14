@@ -175,13 +175,19 @@ class ExcelParser {
 
     const items = [];
 
+    // Helper hitung volume KL per item berbasis jumlah LO
+    const getVol = (assignedLOs) => {
+      return (assignedLOs && assignedLOs.length > 0) ? assignedLOs.length * 8 : 8;
+    };
+
     // Skenario 1: 1 Produk (atau 0 produk) -> Seluruh LO dimasukkan sekaligus ke 1 produk
     if (produkList.length === 1) {
       const prod = produkList[0];
       items.push({
         produk: prod,
         loList: loList,
-        combinedLO: loList.join(', ')
+        combinedLO: loList.join(', '),
+        volume: getVol(loList)
       });
       return items;
     }
@@ -189,10 +195,12 @@ class ExcelParser {
     // Skenario 2: Jumlah Produk = Jumlah LO
     if (loList.length === produkList.length) {
       for (let i = 0; i < produkList.length; i++) {
+        const assigned = [loList[i]];
         items.push({
           produk: produkList[i],
-          loList: [loList[i]],
-          combinedLO: loList[i]
+          loList: assigned,
+          combinedLO: loList[i],
+          volume: getVol(assigned)
         });
       }
       return items;
@@ -233,7 +241,8 @@ class ExcelParser {
         items.push({
           produk: produkList[i],
           loList: assignedLOs,
-          combinedLO: assignedLOs.join(', ')
+          combinedLO: assignedLOs.join(', '),
+          volume: getVol(assignedLOs)
         });
       }
 
@@ -246,7 +255,8 @@ class ExcelParser {
       items.push({
         produk: produkList[i],
         loList: assignedLOs,
-        combinedLO: assignedLOs.join(', ')
+        combinedLO: assignedLOs.join(', '),
+        volume: getVol(assignedLOs)
       });
     }
 

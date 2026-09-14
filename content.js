@@ -419,6 +419,20 @@ class DOMUtils {
   static clickElement(el) {
     if (!el) return;
     try { el.focus(); } catch (e) { }
+
+    // Jika elemen adalah tombol (<button>), pastikan type="button" jika berada dalam form untuk mencegah submit form tidak disengaja
+    if (el.tagName === 'BUTTON') {
+      if (!el.hasAttribute('type') || el.getAttribute('type') === 'submit') {
+        if (el.id.includes('modal') || el.id.includes('add') || el.classList.contains('ew-btn')) {
+          el.setAttribute('type', 'button');
+        }
+      }
+      if (typeof el.click === 'function') {
+        el.click();
+        return;
+      }
+    }
+
     const events = ['mousedown', 'mouseup', 'click'];
     events.forEach(evtName => {
       const evt = new MouseEvent(evtName, {
@@ -1269,7 +1283,10 @@ class PengisianPageHandler extends BasePageHandler {
     const isPengisianDone = isWorker ? WorkerContextManager.isSubmitted('pengisianSubmitted') : false;
 
     chrome.storage.local.get(['pengisianSubmitted'], (resStorage) => {
-      if (isPengisianDone || resStorage.pengisianSubmitted || DOMUtils.isActivityStatusCompleted()) {
+      // Isolisasi state: Tab Pekerja HANYA membaca `isPengisianDone` dari sessionStorage pekerja, bukan global chrome.storage
+      const isSubmittedForThisContext = isWorker ? isPengisianDone : (resStorage.pengisianSubmitted || false);
+
+      if (isSubmittedForThisContext) {
         Logger.log('Aktivitas Pengisian terdeteksi telah disubmit/COMPLETED. Mengarahkan kembali ke menu Proses...', 'success');
         if (isWorker) {
           WorkerContextManager.setSubmitted('pengisianSubmitted', true);
@@ -1318,12 +1335,19 @@ class PengisianPageHandler extends BasePageHandler {
 
         const totalItems = itemsList.length;
 
-        // Inspeksi tabel draf Pengisian yang sudah terisi di portal
-        const detailTableRows = Array.from(document.querySelectorAll('#tbl_detail_pengisian tbody tr, table.ew-table tbody tr, table tbody tr')).filter(r => {
+        // Inspeksi tabel draf Pengisian: Khusus tabel detail pengisian, abaikan tabel log & info header
+        const detailContainer = document.querySelector('#tbl_detail_pengisian, #r_Pengisian, #g_Pengisian') ||
+          Array.from(document.querySelectorAll('.ew-grid-middle-panel table')).find(t => !t.closest('#log-Table-row'));
+
+        const rawRows = detailContainer
+          ? Array.from(detailContainer.querySelectorAll('tbody tr'))
+          : Array.from(document.querySelectorAll('table.ew-table tbody tr')).filter(r => !r.closest('#log-Table-row, .main-header, .stepper, nav, header'));
+
+        const detailTableRows = rawRows.filter(r => {
           const cells = r.querySelectorAll('td');
           if (cells.length < 2) return false;
           const text = r.textContent.trim().toLowerCase();
-          return !text.includes('no data') && !text.includes('tidak ada data') && !text.includes('record 0');
+          return !text.includes('no data') && !text.includes('tidak ada data') && !text.includes('record 0') && !text.includes('total');
         });
         const existingCount = detailTableRows.length;
 
@@ -1350,6 +1374,12 @@ class PengisianPageHandler extends BasePageHandler {
 
             if (addBtn) {
               Logger.log(`Membuka modal untuk item pengisian produk ke-${subIdx + 1}/${totalItems} dalam ${this.stepDelay / 1000} detik...`, 'info');
+
+              // Enforce type="button" agar tidak memicu form submit pada parent form
+              if (addBtn.tagName === 'BUTTON') {
+                addBtn.setAttribute('type', 'button');
+              }
+
               setTimeout(() => DOMUtils.clickElement(addBtn), this.stepDelay);
             } else {
               Logger.log('Tombol Add Modal (#btn-add-modal / + Add) tidak terdeteksi di halaman.', 'error');
@@ -1365,7 +1395,7 @@ class PengisianPageHandler extends BasePageHandler {
             const activeProduct = activeItem.produk;
 
             // Jalankan pengisian berurutan
-            this.executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalItems, subIdx, compPos);
+            this.executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalItems, subIdx, compPos, activeItem);
           }
         } else {
           Logger.log(`Seluruh baris detail produk (${totalItems} item) selesai dimasukkan/tersedia di draf. Menyiapkan Save Draft & Submit final...`, 'success');
@@ -1409,7 +1439,7 @@ class PengisianPageHandler extends BasePageHandler {
     });
   }
 
-  async executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalLO, subIdx, compPos) {
+  async executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalLO, subIdx, compPos, activeItem) {
     // a. Nomor LO
     const loInputEl = document.getElementById('LO') || document.getElementById('x_LO') || document.querySelector('input[id*="LO"], input[name*="LO"]');
     if (loInputEl) {
@@ -1484,7 +1514,7 @@ class PengisianPageHandler extends BasePageHandler {
     }
 
     // e. Quantity, Meter, Bay Number & Kompartemen
-    this.fillMetersAndQuantity(activeProduct, rowData, totalLO, subIdx, compPos);
+    this.fillMetersAndQuantity(activeProduct, rowData, totalLO, subIdx, compPos, activeItem);
 
     // f. Verifikasi akhir Produk (hanya jika butuh pencarian otomatis)
     if (needsProductSelect && productSelect) {
@@ -1569,55 +1599,116 @@ class PengisianPageHandler extends BasePageHandler {
     }
   }
 
-  fillMetersAndQuantity(product, rowData, totalItems, subIdx, compPos) {
+  fillMetersAndQuantity(product, rowData, totalItems, subIdx, compPos, activeItem) {
+    const findField = (idList) => {
+      for (const id of idList) {
+        const el = document.getElementById(id) || document.querySelector(`input[id="${id}"], input[name="${id}"], select[id="${id}"], select[name="${id}"]`);
+        if (el) return DOMUtils.resolveActualInputElement(el);
+      }
+      for (const id of idList) {
+        const clean = id.replace(/^x_/, '');
+        const el = document.querySelector(`input[id*="${clean}" i], input[name*="${clean}" i]`);
+        if (el) return DOMUtils.resolveActualInputElement(el);
+      }
+      return null;
+    };
+
     let bayVal = "1";
     let meterVal = "1";
 
-    if (product.includes('DEXLITE') || product.includes('SOLAR') || product.includes('BIOSOLAR')) {
+    const pUpper = (product || '').toUpperCase();
+    if (pUpper.includes('DEXLITE') || pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR')) {
       bayVal = "6";
       meterVal = "1";
-    } else if (product.includes('PERTALITE')) {
+    } else if (pUpper.includes('PERTALITE')) {
       bayVal = "1";
       meterVal = "1";
-    } else if (product.includes('PERTAMAX')) {
+    } else if (pUpper.includes('PERTAMAX')) {
       bayVal = "5";
       meterVal = "4";
     }
 
-    const bayInput = document.getElementById('BayNumber') || document.querySelector('input[id*="Bay"]');
+    const bayInput = findField(['x_BayNumber', 'BayNumber', 'x_Bay_Number', 'x_BayNo', 'BayNo', 'Bay']);
     if (bayInput) {
       bayInput.value = bayVal;
-      bayInput.dispatchEvent(new Event('change', { bubbles: true }));
+      ['input', 'change', 'blur'].forEach(evt => bayInput.dispatchEvent(new Event(evt, { bubbles: true })));
+      Logger.log(`Mengisi Bay Number: ${bayVal}`, 'info');
+    } else {
+      Logger.log('Input Bay Number tidak ditemukan di modal.', 'warn');
     }
-    const meterInput = document.getElementById('NoMeter') || document.querySelector('input[id*="Meter"]');
+
+    const meterInput = findField(['x_NoMeter', 'NoMeter', 'x_No_Meter', 'x_MeterNo', 'MeterNo']);
     if (meterInput) {
       meterInput.value = meterVal;
-      meterInput.dispatchEvent(new Event('change', { bubbles: true }));
+      ['input', 'change', 'blur'].forEach(evt => meterInput.dispatchEvent(new Event(evt, { bubbles: true })));
+      Logger.log(`Mengisi No Meter: ${meterVal}`, 'info');
+    } else {
+      Logger.log('Input No Meter tidak ditemukan di modal.', 'warn');
     }
 
-    const volInput = document.getElementById('Volume') || document.getElementById('Quantity') || document.querySelector('input[name*="Volume"], input[id*="Volume"], input[name*="Quantity"]');
-    const pieceVolume = (rowData.volume / (totalItems || 1)) * 1000;
+    // Normalisasi volume ke KL
+    const normalizeKL = (vol) => {
+      if (!vol || isNaN(vol)) return 0;
+      return vol > 500 ? vol / 1000 : vol;
+    };
+
+    const itemsList = (rowData && rowData.itemsList && rowData.itemsList.length > 0) ? rowData.itemsList : [];
+
+    // Hitung volume item saat ini (dalam KL)
+    let currentKL = 0;
+    if (activeItem && activeItem.loList && activeItem.loList.length > 0) {
+      currentKL = activeItem.loList.length * 8;
+    } else if (activeItem && activeItem.volume) {
+      currentKL = normalizeKL(activeItem.volume);
+    } else if (rowData && rowData.volume) {
+      const truckKL = normalizeKL(rowData.volume);
+      currentKL = truckKL / (totalItems || 1);
+    } else {
+      currentKL = 8;
+    }
+
+    const volInput = findField(['x_Quantity', 'Quantity', 'x_Volume', 'Volume', 'x_Qty', 'Qty']);
+    const pieceVolume = Math.round(currentKL * 1000);
     if (volInput) {
       volInput.value = pieceVolume;
-      volInput.dispatchEvent(new Event('input', { bubbles: true }));
-      volInput.dispatchEvent(new Event('change', { bubbles: true }));
-      Logger.log(`Set Volume: ${pieceVolume} Liter`, 'info');
+      ['input', 'change', 'blur'].forEach(evt => volInput.dispatchEvent(new Event(evt, { bubbles: true })));
+      Logger.log(`Set Volume/Quantity: ${pieceVolume} Liter (${currentKL} KL)`, 'info');
+    } else {
+      Logger.log('Input Volume/Quantity tidak ditemukan di modal.', 'warn');
     }
 
-    const numCompNeeded = Math.ceil((rowData.volume / (totalItems || 1)) / 8);
+    // Hitung kompartemen awal secara akumulatif berurutan (Sequential Compartment Allocation)
+    let compStart = 1;
+    for (let i = 0; i < subIdx; i++) {
+      const prevItem = itemsList[i];
+      let prevKL = 0;
+      if (prevItem && prevItem.loList && prevItem.loList.length > 0) {
+        prevKL = prevItem.loList.length * 8;
+      } else if (prevItem && prevItem.volume) {
+        prevKL = normalizeKL(prevItem.volume);
+      } else if (rowData && rowData.volume) {
+        prevKL = normalizeKL(rowData.volume) / (totalItems || 1);
+      } else {
+        prevKL = 8;
+      }
+      const prevCompsNeeded = Math.max(1, Math.ceil(prevKL / 8));
+      compStart += prevCompsNeeded;
+    }
+
+    const numCompNeeded = Math.max(1, Math.ceil(currentKL / 8));
     const comps = [];
-    const baseComp = compPos || 1;
     for (let i = 0; i < numCompNeeded; i++) {
-      comps.push(baseComp + i);
+      comps.push(compStart + i);
     }
     const compStr = comps.join('.');
 
-    const compInput = document.getElementById('NomorKompartment') || document.querySelector('input[id*="Kompartment"], input[id*="Kompartemen"]');
+    const compInput = findField(['x_NomorKompartment', 'NomorKompartment', 'x_NomorKompartemen', 'NomorKompartemen', 'x_Kompartment', 'Kompartment']);
     if (compInput) {
       compInput.value = compStr;
-      compInput.dispatchEvent(new Event('input', { bubbles: true }));
-      compInput.dispatchEvent(new Event('change', { bubbles: true }));
-      Logger.log(`Mengisi Nomor Kompartemen: ${compStr}`, 'success');
+      ['input', 'change', 'blur'].forEach(evt => compInput.dispatchEvent(new Event(evt, { bubbles: true })));
+      Logger.log(`Mengisi Nomor Kompartemen: ${compStr} (Produk ke-${subIdx + 1}, ${currentKL} KL)`, 'success');
+    } else {
+      Logger.log('Input Nomor Kompartemen tidak ditemukan di modal.', 'warn');
     }
   }
 }
