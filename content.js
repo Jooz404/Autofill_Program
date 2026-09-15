@@ -1278,6 +1278,56 @@ class GateInPageHandler extends BasePageHandler {
 
 // Handler Halaman 5: Formulir Pengisian (Multi-baris detail dengan Modal Tambah)
 class PengisianPageHandler extends BasePageHandler {
+  getExistingPengisianItems() {
+    const items = [];
+
+    // 1. Pemindaian baris ag-Grid (framework tabel modern yang digunakan portal)
+    const agRows = Array.from(document.querySelectorAll('.ag-center-cols-container .ag-row, div[role="row"].ag-row'));
+    if (agRows.length > 0) {
+      agRows.forEach(row => {
+        const prodCell = row.querySelector('[col-id="Produk"]');
+        const loCell = row.querySelector('[col-id="LO"], [col-id="NomorLO"], [col-id="NoLO"]');
+        const fullText = row.textContent || '';
+
+        const prodText = prodCell ? prodCell.textContent.trim() : '';
+        const loText = loCell ? loCell.textContent.trim() : '';
+
+        if (prodText || loText || fullText.trim()) {
+          items.push({
+            produkText: prodText.toUpperCase(),
+            loText: loText.toUpperCase(),
+            fullText: fullText.toUpperCase()
+          });
+        }
+      });
+      return items;
+    }
+
+    // 2. Fallback: Pemindaian tabel HTML tradisional (table tbody tr)
+    const detailContainer = document.querySelector('#tbl_detail_pengisian, #r_Pengisian, #g_Pengisian') ||
+      Array.from(document.querySelectorAll('.ew-grid-middle-panel table')).find(t => !t.closest('#log-Table-row'));
+
+    const rawRows = detailContainer
+      ? Array.from(detailContainer.querySelectorAll('tbody tr'))
+      : Array.from(document.querySelectorAll('table.ew-table tbody tr')).filter(r => !r.closest('#log-Table-row, .main-header, .stepper, nav, header'));
+
+    rawRows.forEach(r => {
+      const cells = r.querySelectorAll('td');
+      if (cells.length >= 2) {
+        const text = r.textContent.trim().toLowerCase();
+        if (!text.includes('no data') && !text.includes('tidak ada data') && !text.includes('record 0') && !text.includes('total')) {
+          items.push({
+            produkText: r.textContent.trim().toUpperCase(),
+            loText: r.textContent.trim().toUpperCase(),
+            fullText: r.textContent.trim().toUpperCase()
+          });
+        }
+      }
+    });
+
+    return items;
+  }
+
   handle(rowData, stage, tankConfigs, compPos) {
     const isWorker = WorkerContextManager.isWorker();
     const isPengisianDone = isWorker ? WorkerContextManager.isSubmitted('pengisianSubmitted') : false;
@@ -1335,26 +1385,40 @@ class PengisianPageHandler extends BasePageHandler {
 
         const totalItems = itemsList.length;
 
-        // Inspeksi tabel draf Pengisian: Khusus tabel detail pengisian, abaikan tabel log & info header
-        const detailContainer = document.querySelector('#tbl_detail_pengisian, #r_Pengisian, #g_Pengisian') ||
-          Array.from(document.querySelectorAll('.ew-grid-middle-panel table')).find(t => !t.closest('#log-Table-row'));
+        // Smart Inspeksi Draf Pengisian (Mendukung ag-Grid dan Tabel HTML)
+        const existingItems = this.getExistingPengisianItems();
+        const existingCount = existingItems.length;
 
-        const rawRows = detailContainer
-          ? Array.from(detailContainer.querySelectorAll('tbody tr'))
-          : Array.from(document.querySelectorAll('table.ew-table tbody tr')).filter(r => !r.closest('#log-Table-row, .main-header, .stepper, nav, header'));
+        // Hitung berapa banyak item dari itemsList yang SUDAH ada di tabel draf
+        let matchedCount = 0;
+        itemsList.forEach((item) => {
+          const prodTarget = (item.produk || '').trim().toUpperCase();
+          const loTargetList = (item.loList || []).map(l => l.trim().toUpperCase());
 
-        const detailTableRows = rawRows.filter(r => {
-          const cells = r.querySelectorAll('td');
-          if (cells.length < 2) return false;
-          const text = r.textContent.trim().toLowerCase();
-          return !text.includes('no data') && !text.includes('tidak ada data') && !text.includes('record 0') && !text.includes('total');
+          const isAlreadyInTable = existingItems.some(ex => {
+            const prodClean = prodTarget.replace(/[^A-Z0-9]/g, '');
+            const exClean = ex.fullText.replace(/[^A-Z0-9]/g, '');
+            const matchProduct = prodClean && exClean.includes(prodClean);
+            const matchLO = loTargetList.some(lo => lo && exClean.includes(lo.replace(/[^A-Z0-9]/g, '')));
+
+            return matchProduct || matchLO;
+          });
+
+          if (isAlreadyInTable) {
+            matchedCount++;
+          }
         });
-        const existingCount = detailTableRows.length;
 
-        if (existingCount > subIdx && existingCount <= totalItems) {
-          Logger.log(`Deteksi Draf: ${existingCount} item produk sudah ada di tabel Pengisian. Menyesuaikan subIdx ke-${existingCount}...`, 'info');
-          subIdx = existingCount;
-          chrome.storage.local.set({ subIdx: existingCount });
+        const effectiveSubIdx = Math.max(subIdx, existingCount, matchedCount);
+
+        if (effectiveSubIdx > subIdx && effectiveSubIdx <= totalItems) {
+          Logger.log(`Deteksi Draf (ag-Grid/HTML): ${effectiveSubIdx}/${totalItems} item produk terdeteksi sudah ada di tabel Pengisian. Menyesuaikan subIdx ke-${effectiveSubIdx}...`, 'info');
+          subIdx = effectiveSubIdx;
+          if (!isWorker) {
+            chrome.storage.local.set({ subIdx: effectiveSubIdx });
+          } else {
+            WorkerContextManager.setSubIdx(effectiveSubIdx);
+          }
         }
 
         // Deteksi modal terbuka secara presisi
@@ -1470,29 +1534,30 @@ class PengisianPageHandler extends BasePageHandler {
     await new Promise(r => setTimeout(r, 300));
 
     // c. Tangki 1 & Tangki 2 (DISET LEBIH DULUAN, beri jeda AJAX 700ms agar auto-populate portal selesai)
-    let tank1Val = "5";
-    let tank2Val = "15";
+    let tank1Val = "11";
+    let tank2Val = "8";
     const pUpper = activeProduct.trim().toUpperCase();
 
     if (pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR') || pUpper.includes('DEXLITE')) {
-      tank1Val = tankConfigs['BIOSOLAR B50_1'] || tankConfigs['BIOSOLAR'] || '5';
-      tank2Val = tankConfigs['BIOSOLAR B50_2'] || '15';
+      tank1Val = tankConfigs['BIOSOLAR B50_1'] || tankConfigs['BIOSOLAR'] || '15';
+      tank2Val = tankConfigs['BIOSOLAR B50_2'] || '8';
     } else if (pUpper.includes('PERTALITE')) {
-      tank1Val = tankConfigs['PERTALITE'] || '1';
+      tank1Val = tankConfigs['PERTALITE'] || '11';
     } else if (pUpper.includes('PERTAMAX') && !pUpper.includes('TURBO')) {
-      tank1Val = tankConfigs['PERTAMAX'] || '2';
+      tank1Val = tankConfigs['PERTAMAX,BULK'] || tankConfigs['PERTAMAX, BULK'] || tankConfigs['PERTAMAX'] || '3';
     } else if (pUpper.includes('TURBO')) {
-      tank1Val = tankConfigs['PERTAMAX TURBO'] || '3';
+      tank1Val = tankConfigs['PERTAMAX TURBO'] || '19';
     } else if (pUpper.includes('PERTADEX')) {
-      tank1Val = tankConfigs['PERTADEX'] || '4';
+      tank1Val = tankConfigs['PERTADEX'] || '17';
     } else if (pUpper.includes('AVTUR')) {
-      tank1Val = tankConfigs['AVTUR'] || '5';
+      tank1Val = tankConfigs['AVTUR'] || '6';
     } else {
-      tank1Val = tankConfigs[pUpper] || '1';
+      tank1Val = tankConfigs[pUpper] || '11';
     }
 
     const tank1Select = document.getElementById('NomorTangki') || document.getElementById('x_NomorTangki') || document.querySelector('select[id*="NomorTangki"]');
     if (tank1Select) {
+      Logger.log(`Mengatur Tangki 1 untuk ${activeProduct}: "${tank1Val}"`, 'info');
       await Select2Helper.setSelectByValueOrText(tank1Select, tank1Val).catch(e => Logger.log(`Gagal set Tangki 1: ${e}`, 'warn'));
     }
     await new Promise(r => setTimeout(r, 700));
@@ -1503,14 +1568,20 @@ class PengisianPageHandler extends BasePageHandler {
     }
     await new Promise(r => setTimeout(r, 700));
 
-    // d. Produk Utama — Hanya dilakukan pencarian otomatis via dropdown Select2 untuk SOLAR & DEXLITE
+    // d. Produk Utama — Pencarian otomatis via dropdown Select2
     const needsProductSelect = pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR') || pUpper.includes('DEXLITE');
     const productSelect = document.getElementById('Produk') || document.getElementById('x_IdProduk') || document.querySelector('select[id*="Produk"]');
 
     if (needsProductSelect && productSelect) {
       await this.setProdukAndVerify(productSelect, activeProduct, 2000, 200);
-    } else {
-      Logger.log(`[Skip Produk Dropdown] Produk "${activeProduct}" otomatis menyesuaikan berdasarkan pilihan Tangki.`, 'info');
+    } else if (productSelect) {
+      const currentText = productSelect.options[productSelect.selectedIndex]?.text || '';
+      if (pUpper.includes('PERTAMAX') && !pUpper.includes('TURBO') && currentText.toUpperCase().includes('TURBO')) {
+        Logger.log(`↩️ Portal memilih "${currentText}". Mengoreksi ke produk PERTAMAX (non-turbo)...`, 'warn');
+        await Select2Helper.setSelectByValueOrText(productSelect, 'PERTAMAX').catch(() => {});
+      } else {
+        Logger.log(`[Produk Auto] Produk "${activeProduct}" disesuaikan berdasarkan pilihan Tangki (${tank1Val}).`, 'info');
+      }
     }
 
     // e. Quantity, Meter, Bay Number & Kompartemen

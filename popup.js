@@ -332,9 +332,9 @@ class ExcelParser {
             }
           }
 
-          let cleanProduct = String(rawProduct || '').trim().replace(/[;,\s]+$/, '').toUpperCase();
+          let cleanProduct = String(rawProduct || '').trim().replace(/[;\s]+$/, '').toUpperCase();
           let produkList = String(rawProduct || '')
-            .split(/[;,]/)
+            .split(';')
             .map(s => s.trim().toUpperCase())
             .filter(s => s.length > 0);
 
