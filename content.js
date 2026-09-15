@@ -1599,6 +1599,53 @@ class PengisianPageHandler extends BasePageHandler {
     }
   }
 
+  determineBayAndMeter(product, nopol = '') {
+    const pUpper = (product || '').toUpperCase();
+    const cleanNopol = (nopol || '').toString().replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+
+    // Generator seed acak yang konsisten per truk (berdasarkan Nopol),
+    // atau fallback ke Math.random() jika nopol kosong
+    let seed = 0;
+    if (cleanNopol) {
+      for (let i = 0; i < cleanNopol.length; i++) {
+        seed = (seed * 31 + cleanNopol.charCodeAt(i)) % 1000007;
+      }
+    } else {
+      seed = Math.floor(Math.random() * 10000);
+    }
+
+    const pickRandom = (arr, offset = 0) => {
+      const idx = Math.abs(seed + offset) % arr.length;
+      return arr[idx];
+    };
+
+    let bayVal = "1";
+    let meterVal = "1";
+
+    if (pUpper.includes('DEXLITE') || pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR')) {
+      // Biosolar B50 & Dexlite: Bay diacak (6, 7), Meter diacak (1, 2, 3)
+      bayVal = pickRandom(["6", "7"], 0);
+      meterVal = pickRandom(["1", "2", "3"], 1);
+    } else if (pUpper.includes('PERTALITE')) {
+      // Pertalite (PL): Bay diacak (1, 2, 5), Meter = 1
+      bayVal = pickRandom(["1", "2", "5"], 0);
+      meterVal = "1";
+    } else if (pUpper.includes('PERTAMAX') && !pUpper.includes('TURBO') && !pUpper.includes('PDX')) {
+      // Pertamax: Bay = 5, Meter = 4
+      bayVal = "5";
+      meterVal = "4";
+    } else if (pUpper.includes('TURBO') || pUpper.includes('PDX') || pUpper.includes('PERTADEX')) {
+      // Pertamax Turbo / PDX / Pertadex: Bay = 1, Meter = 6
+      bayVal = "1";
+      meterVal = "6";
+    } else {
+      bayVal = "1";
+      meterVal = "1";
+    }
+
+    return { bayVal, meterVal };
+  }
+
   fillMetersAndQuantity(product, rowData, totalItems, subIdx, compPos, activeItem) {
     const findField = (idList) => {
       for (const id of idList) {
@@ -1613,20 +1660,7 @@ class PengisianPageHandler extends BasePageHandler {
       return null;
     };
 
-    let bayVal = "1";
-    let meterVal = "1";
-
-    const pUpper = (product || '').toUpperCase();
-    if (pUpper.includes('DEXLITE') || pUpper.includes('SOLAR') || pUpper.includes('BIOSOLAR')) {
-      bayVal = "6";
-      meterVal = "1";
-    } else if (pUpper.includes('PERTALITE')) {
-      bayVal = "1";
-      meterVal = "1";
-    } else if (pUpper.includes('PERTAMAX')) {
-      bayVal = "5";
-      meterVal = "4";
-    }
+    const { bayVal, meterVal } = this.determineBayAndMeter(product, rowData?.nopol);
 
     const bayInput = findField(['x_BayNumber', 'BayNumber', 'x_Bay_Number', 'x_BayNo', 'BayNo', 'Bay']);
     if (bayInput) {

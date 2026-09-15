@@ -282,8 +282,8 @@ class ExcelParser {
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
-        const data = e.target.result;
-        const workbook = XLSX.read(data, { type: 'binary' });
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array', cellDates: false, raw: true });
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
 
@@ -345,6 +345,7 @@ class ExcelParser {
           let loList = String(rawLO || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
           let segelList = String(rawSegel || '').split(',').map(s => s.trim()).filter(s => s.length > 0);
           let cleanDateShipment = DateFormatter.formatExcelDate(rawDateShipment);
+          let cleanGateOut = DateFormatter.formatExcelDate(rawGateOut);
           let parsedVol = parseFloat(rawVol || '0') || 0;
           let itemsList = ExcelParser.allocateLOsToProducts(loList, produkList, parsedVol);
 
@@ -397,7 +398,7 @@ class ExcelParser {
       this.logger.addLog('Error membaca file.', 'error');
     };
 
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
   }
 }
 
@@ -505,6 +506,15 @@ class PopupAppManager {
 
   initDropzoneAndFileInput() {
     if (this.dropzone) {
+      this.dropzone.addEventListener('click', (e) => {
+        if (e.target !== this.excelFileInput) {
+          if (this.excelFileInput) {
+            this.excelFileInput.value = '';
+            this.excelFileInput.click();
+          }
+        }
+      });
+
       this.dropzone.addEventListener('dragover', (e) => {
         e.preventDefault();
         this.dropzone.style.borderColor = 'var(--pertamina-green)';
@@ -518,10 +528,13 @@ class PopupAppManager {
         e.preventDefault();
         this.dropzone.style.borderColor = 'rgba(0, 118, 229, 0.3)';
         const file = e.dataTransfer.files[0];
-        if (file && file.name.endsWith('.xlsx')) {
-          this.excelParser.parseFile(file);
-        } else {
-          this.logger.addLog('Peringatan: Harap masukkan file berformat .xlsx saja.', 'warn');
+        if (file) {
+          const lowerName = file.name.toLowerCase();
+          if (lowerName.endsWith('.xlsx') || lowerName.endsWith('.xls') || lowerName.endsWith('.xlsm')) {
+            this.excelParser.parseFile(file);
+          } else {
+            this.logger.addLog('Peringatan: Harap masukkan file berformat .xlsx, .xls, atau .xlsm.', 'warn');
+          }
         }
       });
     }
