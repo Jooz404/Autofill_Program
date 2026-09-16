@@ -550,20 +550,69 @@ class DOMUtils {
     return false;
   }
 
-  static goToProsesPage() {
-    Logger.log('Mengalihkan halaman kembali ke menu Proses...', 'info');
-    const link = document.querySelector('.stepper a[href*="ProsesList"]') ||
-      document.querySelector('a[href*="ProsesList"]') ||
-      document.querySelector('a[href*="proses_list"]') ||
-      Array.from(document.querySelectorAll('a')).find(a => a.getAttribute('href') && a.getAttribute('href').toLowerCase().includes('proseslist'));
+  static extractIdReferensi() {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromUrl = urlParams.get('x_IdReferensi[]') || urlParams.get('x_IdReferensi') || urlParams.get('fk_IdPenyaluran');
+      if (fromUrl && fromUrl.trim() !== '') {
+        sessionStorage.setItem('last_id_referensi', fromUrl.trim());
+        return fromUrl.trim();
+      }
+    } catch (e) { }
+
+    const refInput = document.getElementById('x_IdReferensi') ||
+      document.querySelector('input[name*="IdReferensi"], input[id*="IdReferensi"], select[id*="IdReferensi"]');
+    if (refInput) {
+      const val = (refInput.value || refInput.textContent || '').trim();
+      if (val) {
+        sessionStorage.setItem('last_id_referensi', val);
+        return val;
+      }
+    }
+
+    const pageText = document.body?.innerText || '';
+    const match = pageText.match(/\b(S-\d{4}-\d{8}-\d{4})\b/i) || pageText.match(/\b(S-[A-Za-z0-9\-]{10,25})\b/i);
+    if (match) {
+      const foundId = match[1].trim();
+      sessionStorage.setItem('last_id_referensi', foundId);
+      return foundId;
+    }
+
+    return sessionStorage.getItem('last_id_referensi') || null;
+  }
+
+  static goToProsesPage(idRef = null) {
+    Logger.log('Mengalihkan halaman kembali ke menu Proses Penyaluran...', 'info');
+
+    let targetRef = idRef;
+    if (!targetRef && WorkerContextManager.isWorker()) {
+      targetRef = WorkerContextManager.getRowData()?.idReferensi || null;
+    }
+    if (!targetRef) {
+      targetRef = DOMUtils.extractIdReferensi();
+    }
+
+    if (targetRef) {
+      const searchUrl = `/ProsesPenyaluranList?cmd=search&x_IdReferensi%5B%5D=${encodeURIComponent(targetRef)}&search=&searchtype=`;
+      Logger.log(`Mengarahkan ke ProsesPenyaluranList berparameter IdReferensi: ${targetRef}`, 'info');
+      window.location.href = searchUrl;
+      return;
+    }
+
+    const link = document.querySelector('.stepper a[href*="ProsesPenyaluranList"]') ||
+      document.querySelector('a[href*="ProsesPenyaluranList"]') ||
+      document.querySelector('a[href*="proses_penyaluran_list"]') ||
+      Array.from(document.querySelectorAll('a')).find(a => {
+        const href = (a.getAttribute('href') || '').toLowerCase();
+        return href.includes('prosespenyaluranlist') || href.includes('proses_penyaluran_list');
+      });
 
     if (link) {
-      Logger.log(`Mengklik tautan Proses: ${link.getAttribute('href') || link.href}`, 'info');
+      Logger.log(`Mengklik tautan ProsesPenyaluranList: ${link.getAttribute('href') || link.href}`, 'info');
       link.click();
     } else {
-      Logger.log('Link ProsesList tidak ditemukan di DOM, melakukan redirect URL langsung ke ProsesList...', 'warn');
-      const fallbackUrl = document.querySelector('a[href*="ProsesList"]')?.href || '/ProsesList';
-      window.location.href = fallbackUrl;
+      Logger.log('Link ProsesPenyaluranList tidak ditemukan di DOM, melakukan redirect langsung ke /ProsesPenyaluranList...', 'warn');
+      window.location.href = '/ProsesPenyaluranList';
     }
   }
 }
@@ -802,6 +851,7 @@ class PenyaluranAddPageHandler extends BasePageHandler {
 // Handler Halaman 3: Halaman Jembatan / Stepper Proses
 class ProcessBridgePageHandler extends BasePageHandler {
   handle(rowData, stage) {
+    DOMUtils.extractIdReferensi();
     const isWorker = WorkerContextManager.isWorker();
     const isGateInSubmitted = isWorker ? WorkerContextManager.isSubmitted('gateInSubmitted') : false;
     const isPengisianSubmitted = isWorker ? WorkerContextManager.isSubmitted('pengisianSubmitted') : false;
