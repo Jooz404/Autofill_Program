@@ -1378,6 +1378,42 @@ class PengisianPageHandler extends BasePageHandler {
     return items;
   }
 
+  findFinalSubmitBtn() {
+    const isExcluded = (el) => {
+      if (!el || !DOMUtils.isVisible(el)) return true;
+      const id = (el.id || '').toLowerCase();
+      const text = (el.textContent || '').trim().toLowerCase();
+      const cls = (el.className || '').toLowerCase();
+
+      if (id.includes('add') || id.includes('tambah') || id.includes('modal') || id.includes('draft') || id.includes('edit') || id.includes('delete') || id.includes('cancel')) return true;
+      if (text.includes('add') || text.includes('tambah') || text.includes('edit') || text.includes('delete') || text.includes('cancel')) return true;
+      if (text === 'save' || id === 'btn-save' || id.includes('draft')) return true;
+      if (cls.includes('btn-danger') || cls.includes('btn-warning') || cls.includes('btn-info')) return true;
+
+      return false;
+    };
+
+    const explicitIds = ['btn-submit', 'btn-completed', 'btn-completedEdit', 'btn-action-submit'];
+    for (const id of explicitIds) {
+      const el = document.getElementById(id);
+      if (el && !isExcluded(el)) return el;
+    }
+
+    const attrBtn = document.querySelector('button[data-nextstatus="Completed"]');
+    if (attrBtn && !isExcluded(attrBtn)) return attrBtn;
+
+    const candidates = Array.from(document.querySelectorAll('button, a.btn, input[type="submit"]'));
+    const matched = candidates.find(btn => {
+      if (isExcluded(btn)) return false;
+      const text = (btn.textContent || btn.value || '').trim().toLowerCase();
+      const id = (btn.id || '').toLowerCase();
+
+      return text === 'submit' || text.includes('submit') || text === 'selesai' || id.includes('submit') || id.includes('completed');
+    });
+
+    return matched || null;
+  }
+
   handle(rowData, stage, tankConfigs, compPos) {
     const isWorker = WorkerContextManager.isWorker();
     const isPengisianDone = isWorker ? WorkerContextManager.isSubmitted('pengisianSubmitted') : false;
@@ -1461,8 +1497,8 @@ class PengisianPageHandler extends BasePageHandler {
 
         const effectiveSubIdx = Math.max(subIdx, existingCount, matchedCount);
 
-        if (effectiveSubIdx > subIdx && effectiveSubIdx <= totalItems) {
-          Logger.log(`Deteksi Draf (ag-Grid/HTML): ${effectiveSubIdx}/${totalItems} item produk terdeteksi sudah ada di tabel Pengisian. Menyesuaikan subIdx ke-${effectiveSubIdx}...`, 'info');
+        if (effectiveSubIdx > subIdx) {
+          Logger.log(`Deteksi Draf (ag-Grid/HTML): ${effectiveSubIdx}/${totalItems} item produk terdeteksi di tabel Pengisian. Menyesuaikan subIdx ke-${effectiveSubIdx}...`, 'info');
           subIdx = effectiveSubIdx;
           if (!isWorker) {
             chrome.storage.local.set({ subIdx: effectiveSubIdx });
@@ -1471,11 +1507,16 @@ class PengisianPageHandler extends BasePageHandler {
           }
         }
 
+        // Hard Guardrail: Jika tabel draf sudah memiliki baris produk >= totalItems, paksa subIdx = totalItems
+        if (existingCount >= totalItems || subIdx >= totalItems) {
+          subIdx = Math.max(subIdx, totalItems);
+        }
+
         // Deteksi modal terbuka secara presisi
         const modalEl = document.querySelector('.modal.show, .modal-dialog, #form_input_modal, #row_NomorTangki, select#NomorTangki');
         const isModalOpen = modalEl && DOMUtils.isVisible(modalEl);
 
-        if (subIdx < totalItems) {
+        if (subIdx < totalItems && existingCount < totalItems) {
           if (!isModalOpen) {
             const addBtn = document.getElementById('btn-add-modal') ||
               document.querySelector('button#btn-add-modal') ||
@@ -1487,14 +1528,21 @@ class PengisianPageHandler extends BasePageHandler {
                 (b.id.includes('add-modal') || b.textContent.trim().startsWith('+ Add') || b.textContent.trim() === 'Add New' || b.textContent.trim() === '+ Tambah'));
 
             if (addBtn) {
+              if (addBtn.dataset.autofillOpening === 'true') {
+                Logger.log('Navigasi pembukaan modal sedang berlangsung...', 'info');
+                return;
+              }
+              addBtn.dataset.autofillOpening = 'true';
               Logger.log(`Membuka modal untuk item pengisian produk ke-${subIdx + 1}/${totalItems} dalam ${this.stepDelay / 1000} detik...`, 'info');
 
-              // Enforce type="button" agar tidak memicu form submit pada parent form
               if (addBtn.tagName === 'BUTTON') {
                 addBtn.setAttribute('type', 'button');
               }
 
-              setTimeout(() => DOMUtils.clickElement(addBtn), this.stepDelay);
+              setTimeout(() => {
+                DOMUtils.clickElement(addBtn);
+                setTimeout(() => { delete addBtn.dataset.autofillOpening; }, 3000);
+              }, this.stepDelay);
             } else {
               Logger.log('Tombol Add Modal (#btn-add-modal / + Add) tidak terdeteksi di halaman.', 'error');
             }
@@ -1512,18 +1560,29 @@ class PengisianPageHandler extends BasePageHandler {
             this.executePengisianModalFlow(activeLO, activeProduct, tankConfigs, rowData, totalItems, subIdx, compPos, activeItem);
           }
         } else {
-          Logger.log(`Seluruh baris detail produk (${totalItems} item) selesai dimasukkan/tersedia di draf. Menyiapkan Save Draft & Submit final...`, 'success');
+          Logger.log(`Seluruh baris detail produk (${totalItems} item) selesai dimasukkan/tersedia di draf (Tabel: ${existingCount} baris). Menyiapkan Save Draft & Submit final...`, 'success');
+          
+          window._autofillLockUntil = Date.now() + 10000;
+
           const saveBtn = document.getElementById('btn-save') || document.querySelector('button[data-nextstatus="Draft"]');
-          const finalSubmitBtn = document.getElementById('btn-submit') || document.querySelector('button[data-nextstatus="Completed"]') || document.querySelector('button.btn-success');
+          const finalSubmitBtn = this.findFinalSubmitBtn();
 
           if (saveBtn && DOMUtils.isVisible(saveBtn)) {
-            Logger.log('Mengklik tombol Save Draft (#btn-save)...', 'info');
-            saveBtn.click();
+            if (saveBtn.dataset.autofillClicked !== 'true') {
+              saveBtn.dataset.autofillClicked = 'true';
+              Logger.log('Mengklik tombol Save Draft (#btn-save)...', 'info');
+              saveBtn.click();
+            }
           }
 
           if (finalSubmitBtn) {
             setTimeout(() => {
-              Logger.log('Mengklik tombol Submit Pengisian final (#btn-submit)...', 'success');
+              if (finalSubmitBtn.dataset.autofillClicked === 'true') {
+                Logger.log('Tombol Submit final sudah diklik. Menunggu respon portal...', 'info');
+                return;
+              }
+              finalSubmitBtn.dataset.autofillClicked = 'true';
+              Logger.log(`Mengklik tombol Submit Pengisian final (#${finalSubmitBtn.id || 'submit'})...`, 'success');
               finalSubmitBtn.click();
 
               // Tunggu munculnya modal konfirmasi dialog (#confirmBtn)
@@ -1534,19 +1593,27 @@ class PengisianPageHandler extends BasePageHandler {
 
                 if (modalConfirmBtn && DOMUtils.isVisible(modalConfirmBtn)) {
                   Logger.log('Mengklik konfirmasi submit final (#confirmBtn)...', 'success');
-                  chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
-                    modalConfirmBtn.click();
-                    setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
-                  });
+                  if (isWorker) {
+                    WorkerContextManager.setSubmitted('pengisianSubmitted', true);
+                    WorkerContextManager.setSubIdx(0);
+                  } else {
+                    chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 });
+                  }
+                  modalConfirmBtn.click();
+                  setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
                 } else {
-                  chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 }, () => {
-                    setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
-                  });
+                  if (isWorker) {
+                    WorkerContextManager.setSubmitted('pengisianSubmitted', true);
+                    WorkerContextManager.setSubIdx(0);
+                  } else {
+                    chrome.storage.local.set({ pengisianSubmitted: true, subIdx: 0 });
+                  }
+                  setTimeout(() => DOMUtils.goToProsesPage(), this.stepDelay + 1000);
                 }
               }, 1000);
             }, this.stepDelay + 1000);
           } else {
-            Logger.log('Tombol Submit final Pengisian (#btn-submit) tidak ditemukan.', 'error');
+            Logger.log('Tombol Submit final Pengisian (Submit / Completed) belum muncul atau tidak ditemukan. Standby menunggu portal...', 'warn');
           }
         }
       });
@@ -1702,20 +1769,37 @@ class PengisianPageHandler extends BasePageHandler {
   }
 
   saveModal(subIdx) {
+    if (window._isSavingModal) return;
+    window._isSavingModal = true;
+    window._autofillLockUntil = Date.now() + 6000;
+
     const modalSaveBtn = document.querySelector('.modal-footer button.btn-success, #form_input_modal button[type="submit"], #btn_simpan_modal, .modal button.btn-success, .modal button.btn-primary') ||
       Array.from(document.querySelectorAll('.modal button, button')).find(b => DOMUtils.isVisible(b) && (b.textContent.includes('Add') || b.textContent.includes('Simpan') || b.textContent.includes('Tambah')));
 
     if (modalSaveBtn) {
+      if (modalSaveBtn.dataset.autofillSaving === 'true') {
+        Logger.log('Proses simpan modal sedang berjalan...', 'info');
+        return;
+      }
+      modalSaveBtn.dataset.autofillSaving = 'true';
       Logger.log(`Menyimpan detail modal LO ke-${subIdx + 1}...`, 'success');
+
       if (WorkerContextManager.isWorker()) {
         WorkerContextManager.setSubIdx(subIdx + 1);
-        setTimeout(() => modalSaveBtn.click(), 500);
+        setTimeout(() => {
+          modalSaveBtn.click();
+          setTimeout(() => { window._isSavingModal = false; }, 2000);
+        }, 500);
       } else {
         chrome.storage.local.set({ subIdx: subIdx + 1 }, () => {
-          setTimeout(() => modalSaveBtn.click(), 500);
+          setTimeout(() => {
+            modalSaveBtn.click();
+            setTimeout(() => { window._isSavingModal = false; }, 2000);
+          }, 500);
         });
       }
     } else {
+      window._isSavingModal = false;
       Logger.log('Tombol Simpan/Add Modal tidak ditemukan.', 'warn');
     }
   }
