@@ -79,12 +79,29 @@ body {
 
 .header-logo {
   filter: drop-shadow(0 0 6px rgba(0, 118, 229, 0.5));
-  animation: logo-spin 20s linear infinite;
+  transition: transform 0.3s ease;
 }
 
-@keyframes logo-spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+.header-logo.driving {
+  animation: truckBounce 0.35s infinite alternate ease-in-out;
+}
+
+.header-logo.driving .wheel-hub {
+  transform-origin: center;
+}
+
+.header-logo.driving .road-dash {
+  animation: roadSlide 0.4s infinite linear;
+}
+
+@keyframes truckBounce {
+  0% { transform: translateY(0px); }
+  100% { transform: translateY(-1.5px); }
+}
+
+@keyframes roadSlide {
+  0% { stroke-dashoffset: 0; }
+  100% { stroke-dashoffset: -18; }
 }
 
 .brand h1 {

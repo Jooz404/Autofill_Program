@@ -14,12 +14,39 @@
     <!-- Header -->
     <header class="app-header">
       <div class="logo-area">
-        <svg class="header-logo" width="24" height="24" viewBox="0 0 128 128">
-          <rect x="12" y="12" width="104" height="104" rx="28" fill="#14171a"/>
-          <path d="M 64,24 A 40,40 0 1,1 24,64" fill="none" stroke="#007bff" stroke-width="8" stroke-linecap="round"/>
-          <path d="M 64,104 A 40,40 0 0,1 104,64" fill="none" stroke="#8dc63f" stroke-width="8" stroke-linecap="round"/>
-          <path d="M 104,64 A 40,40 0 0,1 64,24" fill="none" stroke="#ff4b5c" stroke-width="8" stroke-linecap="round"/>
-          <polygon points="56,50 80,64 56,78" fill="#8dc63f"/>
+        <svg class="header-logo" id="app-header-logo" width="32" height="32" viewBox="0 0 128 128">
+          <!-- Background Badge -->
+          <rect x="10" y="10" width="108" height="108" rx="24" fill="#182234" stroke="#0066cc" stroke-width="3"/>
+          
+          <!-- Road Line -->
+          <line class="road-line" x1="16" y1="94" x2="112" y2="94" stroke="#334155" stroke-width="4" stroke-linecap="round"/>
+          <line class="road-dash" x1="24" y1="94" x2="104" y2="94" stroke="#8dc63f" stroke-width="4" stroke-dasharray="10 8" stroke-linecap="round"/>
+
+          <!-- TRUCK TANKER BODY -->
+          <!-- Tank (Back part) -->
+          <rect x="22" y="42" width="56" height="38" rx="14" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
+          <path d="M 22,56 Q 50,60 78,56 L 78,72 Q 50,76 22,72 Z" fill="#0066cc"/>
+          <path d="M 22,52 L 78,52 L 78,56 L 22,56 Z" fill="#ff2e43"/>
+          <rect x="36" y="38" width="12" height="4" rx="2" fill="#64748b"/>
+          <rect x="56" y="38" width="12" height="4" rx="2" fill="#64748b"/>
+
+          <!-- Truck Cabin (Front facing right) -->
+          <path d="M 78,48 L 94,48 Q 104,48 106,58 L 108,70 Q 108,80 98,80 L 78,80 Z" fill="#ff2e43"/>
+          <path d="M 84,52 L 96,52 Q 101,52 102,58 L 103,64 L 84,64 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
+          <rect x="102" y="70" width="7" height="8" rx="2" fill="#475569"/>
+          <circle cx="104" cy="67" r="3" fill="#facc15"/>
+
+          <!-- WHEELS -->
+          <g class="truck-wheels">
+            <circle class="wheel" cx="34" cy="82" r="9" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+            <circle class="wheel-hub" cx="34" cy="82" r="3.5" fill="#94a3b8"/>
+
+            <circle class="wheel" cx="56" cy="82" r="9" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+            <circle class="wheel-hub" cx="56" cy="82" r="3.5" fill="#94a3b8"/>
+
+            <circle class="wheel" cx="92" cy="82" r="9" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+            <circle class="wheel-hub" cx="92" cy="82" r="3.5" fill="#94a3b8"/>
+          </g>
         </svg>
         <div class="brand">
           <h1>S&amp;D Autofill</h1>

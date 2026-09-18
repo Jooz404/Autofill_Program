@@ -1,6 +1,11 @@
 // Background Service Worker untuk Pengelolaan Multi-Tab Master-Worker
 console.log('[Autofill Background] Service worker initialized.');
 
+// Side Panel Behavior: Buka Side Panel secara otomatis saat ikon diklik
+if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(err => console.log('Side panel config note:', err));
+}
+
 // Pool pencatat Tab Pekerja yang sedang aktif
 const activeWorkerTabs = new Set();
 const activeWorkerPlates = new Map(); // tabId -> nopol

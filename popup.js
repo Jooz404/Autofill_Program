@@ -621,15 +621,18 @@ class PopupAppManager {
   }
 
   updateControlUI(running, badgeClass, badgeText) {
+    const headerLogo = document.getElementById('app-header-logo');
     if (running) {
       if (this.btnStart) this.btnStart.style.display = 'none';
       if (this.btnStop) {
         this.btnStop.style.display = 'flex';
         this.btnStop.removeAttribute('disabled');
       }
+      if (headerLogo) headerLogo.classList.add('driving');
     } else {
       if (this.btnStart) this.btnStart.style.display = 'flex';
       if (this.btnStop) this.btnStop.style.display = 'none';
+      if (headerLogo) headerLogo.classList.remove('driving');
     }
 
     if (this.statusText) {

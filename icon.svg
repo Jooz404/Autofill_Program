@@ -1,34 +1,79 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <defs>
-    <linearGradient id="gradRed" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff4b5c"/>
-      <stop offset="100%" stop-color="#e30613"/>
+    <!-- Pertamina Brand Gradients -->
+    <linearGradient id="pertaminaRed" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff2e43"/>
+      <stop offset="100%" stop-color="#cc0010"/>
     </linearGradient>
-    <linearGradient id="gradBlue" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#007bff"/>
-      <stop offset="100%" stop-color="#0054a6"/>
+
+    <linearGradient id="pertaminaBlue" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0066cc"/>
+      <stop offset="100%" stop-color="#003b80"/>
     </linearGradient>
-    <linearGradient id="gradGreen" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#a6e22e"/>
-      <stop offset="100%" stop-color="#8dc63f"/>
+
+    <linearGradient id="pertaminaGreen" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#9ce62e"/>
+      <stop offset="100%" stop-color="#69b814"/>
     </linearGradient>
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
+
+    <linearGradient id="tankBody" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#e2e8f0"/>
+      <stop offset="100%" stop-color="#cbd5e1"/>
+    </linearGradient>
+
+    <filter id="badgeGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
       <feComposite in="SourceGraphic" in2="blur" operator="over"/>
     </filter>
   </defs>
-  
-  <!-- Main outer shell -->
-  <rect x="12" y="12" width="104" height="104" rx="28" fill="#1b1e23" stroke="#2d3139" stroke-width="4"/>
-  
-  <!-- Outer glowing loop representing automation -->
-  <path d="M 64,24 A 40,40 0 1,1 24,64" fill="none" stroke="url(#gradBlue)" stroke-width="8" stroke-linecap="round"/>
-  <path d="M 64,104 A 40,40 0 0,1 104,64" fill="none" stroke="url(#gradGreen)" stroke-width="8" stroke-linecap="round"/>
-  <path d="M 104,64 A 40,40 0 0,1 64,24" fill="none" stroke="url(#gradRed)" stroke-width="8" stroke-linecap="round"/>
-  
-  <!-- Inner Automation Gear aspect -->
-  <circle cx="64" cy="64" r="22" fill="#14171a" stroke="#fff" stroke-width="1.5" />
-  
-  <!-- Direct play symbol to show command/autofill execution -->
-  <polygon points="56,50 80,64 56,78" fill="url(#gradGreen)" filter="url(#glow)"/>
+
+  <!-- Background Card Base -->
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="#0f172a" stroke="#1e293b" stroke-width="4"/>
+  <rect x="12" y="12" width="104" height="104" rx="24" fill="#182234" stroke="url(#pertaminaBlue)" stroke-width="2"/>
+
+  <!-- Speed Motion Rays (Background) -->
+  <path d="M 14,76 L 36,76" stroke="url(#pertaminaGreen)" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+  <path d="M 10,84 L 28,84" stroke="url(#pertaminaRed)" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+
+  <!-- Road Line -->
+  <line x1="16" y1="96" x2="112" y2="96" stroke="#334155" stroke-width="4" stroke-linecap="round"/>
+  <line x1="30" y1="96" x2="50" y2="96" stroke="url(#pertaminaGreen)" stroke-width="4" stroke-linecap="round"/>
+  <line x1="65" y1="96" x2="95" y2="96" stroke="url(#pertaminaGreen)" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- TRUCK TANKER BODY -->
+  <!-- Tank (Back part) -->
+  <rect x="22" y="42" width="56" height="38" rx="14" fill="url(#tankBody)" stroke="#94a3b8" stroke-width="1.5"/>
+  <!-- Tank Pertamina Blue Stripe -->
+  <path d="M 22,56 Q 50,60 78,56 L 78,72 Q 50,76 22,72 Z" fill="url(#pertaminaBlue)"/>
+  <!-- Tank Pertamina Red Accent Strip -->
+  <path d="M 22,52 L 78,52 L 78,56 L 22,56 Z" fill="url(#pertaminaRed)"/>
+
+  <!-- Tanker Cap Top -->
+  <rect x="36" y="38" width="12" height="4" rx="2" fill="#64748b"/>
+  <rect x="56" y="38" width="12" height="4" rx="2" fill="#64748b"/>
+
+  <!-- Truck Cabin (Front part - Facing Right) -->
+  <path d="M 78,48 L 94,48 Q 104,48 106,58 L 108,70 Q 108,80 98,80 L 78,80 Z" fill="url(#pertaminaRed)"/>
+
+  <!-- Cabin Window (Glass) -->
+  <path d="M 84,52 L 96,52 Q 101,52 102,58 L 103,64 L 84,64 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
+
+  <!-- Cabin Grille & Bumper -->
+  <rect x="102" y="70" width="7" height="8" rx="2" fill="#475569"/>
+  <!-- Headlight (Glowing Yellow/Green) -->
+  <circle cx="104" cy="67" r="3" fill="#facc15" filter="url(#badgeGlow)"/>
+
+  <!-- WHEELS (With Silver Hubs) -->
+  <!-- Rear Wheel 1 -->
+  <circle cx="34" cy="82" r="10" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+  <circle cx="34" cy="82" r="4" fill="#94a3b8"/>
+
+  <!-- Rear Wheel 2 -->
+  <circle cx="56" cy="82" r="10" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+  <circle cx="56" cy="82" r="4" fill="#94a3b8"/>
+
+  <!-- Front Wheel -->
+  <circle cx="92" cy="82" r="10" fill="#0f172a" stroke="#475569" stroke-width="2"/>
+  <circle cx="92" cy="82" r="4" fill="#94a3b8"/>
 </svg>
