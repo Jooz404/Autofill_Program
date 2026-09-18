@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pertamina S&D Autofill</title>
+  <title>Pertamina S&amp;D Autofill</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -14,7 +14,7 @@
     <!-- Header -->
     <header class="app-header">
       <div class="logo-area">
-        <svg class="header-logo" id="app-header-logo" width="32" height="32" viewBox="0 0 128 128">
+        <svg class="header-logo" id="app-header-logo" width="30" height="30" viewBox="0 0 128 128">
           <!-- Background Badge -->
           <rect x="10" y="10" width="108" height="108" rx="24" fill="#182234" stroke="#0066cc" stroke-width="3"/>
           
@@ -23,14 +23,13 @@
           <line class="road-dash" x1="24" y1="94" x2="104" y2="94" stroke="#8dc63f" stroke-width="4" stroke-dasharray="10 8" stroke-linecap="round"/>
 
           <!-- TRUCK TANKER BODY -->
-          <!-- Tank (Back part) -->
           <rect x="22" y="42" width="56" height="38" rx="14" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
           <path d="M 22,56 Q 50,60 78,56 L 78,72 Q 50,76 22,72 Z" fill="#0066cc"/>
           <path d="M 22,52 L 78,52 L 78,56 L 22,56 Z" fill="#ff2e43"/>
           <rect x="36" y="38" width="12" height="4" rx="2" fill="#64748b"/>
           <rect x="56" y="38" width="12" height="4" rx="2" fill="#64748b"/>
 
-          <!-- Truck Cabin (Front facing right) -->
+          <!-- Truck Cabin -->
           <path d="M 78,48 L 94,48 Q 104,48 106,58 L 108,70 Q 108,80 98,80 L 78,80 Z" fill="#ff2e43"/>
           <path d="M 84,52 L 96,52 Q 101,52 102,58 L 103,64 L 84,64 Z" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
           <rect x="102" y="70" width="7" height="8" rx="2" fill="#475569"/>
@@ -54,7 +53,7 @@
         </div>
       </div>
       <div class="edge-indicator">
-        <span>MS Edge</span>
+        <span>Side Panel</span>
         <div class="pulse-dot"></div>
       </div>
     </header>
@@ -75,23 +74,25 @@
             <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <span class="dropzone-text">Pilih atau Seret Berkas Excel (.xlsx)</span>
+            <span class="dropzone-text">Pilih / Seret File Excel (.xlsx)</span>
             <span class="file-name" id="file-name-label">Belum ada file terpilih</span>
             <input type="file" id="excel-file" accept=".xlsx, .xls, .xlsm" style="display: none;">
           </label>
         </div>
 
-        <!-- Mode & Worker Concurrency Selection Card -->
-        <div class="card mode-select-card" style="margin-bottom: 12px; padding: 12px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px;">
-          <label for="mode-select" style="font-size: 0.78rem; font-weight: 600; color: #a0aec0; margin-bottom: 4px; display: block; text-transform: uppercase; letter-spacing: 0.5px;">Mode Alur Kerja:</label>
-          <select id="mode-select" class="form-input" style="width: 100%; font-size: 0.85rem; padding: 8px 10px; border-radius: 8px; background: #1a202c; color: #e2e8f0; border: 1px solid #3a4a5e; cursor: pointer; margin-bottom: 10px;">
-            <option value="FULL">Otomatis Penuh (Gate In -> Pengisian -> Gate Out)</option>
-            <option value="SKIP_PENGISIAN">Semi-Otomatis (Gate In &amp; Gate Out Saja)</option>
-          </select>
+        <!-- Mode & Worker Selection Card -->
+        <div class="card mode-select-card">
+          <div class="form-group">
+            <label for="mode-select" class="form-label">Mode Alur Kerja:</label>
+            <select id="mode-select" class="form-input">
+              <option value="FULL">Otomatis Penuh (Gate In ➔ Pengisian ➔ Gate Out)</option>
+              <option value="SKIP_PENGISIAN">Semi-Otomatis (Gate In &amp; Gate Out Saja)</option>
+            </select>
+          </div>
 
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-            <label for="max-workers-input" style="font-size: 0.78rem; font-weight: 600; color: #a0aec0; text-transform: uppercase; letter-spacing: 0.5px; margin: 0;">Maksimal Tab Pekerja:</label>
-            <input type="number" id="max-workers-input" min="1" max="10" value="3" class="form-input" style="width: 70px; font-size: 0.85rem; padding: 6px 8px; border-radius: 8px; background: #1a202c; color: #8dc63f; border: 1px solid #3a4a5e; text-align: center; font-weight: 700;">
+          <div class="form-group" style="flex-direction: row; justify-content: space-between; align-items: center; gap: 8px;">
+            <label for="max-workers-input" class="form-label" style="margin: 0;">Maksimal Tab Pekerja:</label>
+            <input type="number" id="max-workers-input" min="1" max="10" value="3" class="form-input" style="width: 65px; text-align: center; font-weight: 700; color: #8dc63f; padding: 4px 6px;">
           </div>
         </div>
 
@@ -114,11 +115,11 @@
 
           <div class="action-buttons">
             <button class="btn btn-start" id="btn-start" disabled>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
               Mulai Autofill
             </button>
             <button class="btn btn-secondary" id="btn-stop" disabled style="display: none;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
               Hentikan
             </button>
             <button class="btn btn-secondary" id="btn-reset">
@@ -127,7 +128,7 @@
           </div>
         </div>
 
-        <!-- Terminal-like Log Panel -->
+        <!-- Activity Log Panel -->
         <div class="card log-card">
           <div class="card-header">
             <h3>Aktivitas Logs</h3>
@@ -142,47 +143,43 @@
       <!-- Section 2: Tank Configuration -->
       <section id="tab-tanks" class="tab-section">
         <div class="card config-card">
-          <div class="card-header" style="margin-bottom: 12px;">
+          <div class="card-header" style="margin-bottom: 8px;">
             <h3>Pengaturan Nomor Tanki</h3>
             <span class="save-status" id="save-status">Tersimpan otomatis</span>
           </div>
-          <p class="config-desc">Sesuaikan nomor tangki yang aktif hari ini berdasarkan jadwal pengisian (Filling Shed).</p>
+          <p class="config-desc">Sesuaikan nomor tangki aktif hari ini berdasarkan jadwal pengisian (Filling Shed).</p>
 
           <form id="tank-form" class="tank-form">
-            <!-- Pertalite -->
-            <div class="form-row">
+            <!-- Pertalite & Pertamax Grid -->
+            <div class="form-grid-fluid">
               <div class="form-group">
                 <label for="tank-pertalite">PERTALITE (Tk. 1)</label>
                 <input type="text" id="tank-pertalite" placeholder="contoh: 11" class="form-input">
               </div>
-            </div>
-
-            <!-- Pertamax -->
-            <div class="form-row">
               <div class="form-group">
                 <label for="tank-pertamax">PERTAMAX (Tk. 1)</label>
                 <input type="text" id="tank-pertamax" placeholder="contoh: 3" class="form-input">
               </div>
             </div>
 
-            <!-- Biosolar B50 (Inline Blending: Solar + Fame) -->
+            <!-- Biosolar Dual Tank Grid -->
             <div class="form-category-header">IN LINE BLENDING (Dual Tanki)</div>
             
-            <div class="form-row split">
+            <div class="form-grid-fluid">
               <div class="form-group">
-                <label for="tank-solar-1">BIOSOLAR B50 (Tanki 1 - Solar)</label>
+                <label for="tank-solar-1">BIOSOLAR B50 (Tank 1 - Solar)</label>
                 <input type="text" id="tank-solar-1" placeholder="contoh: 15" class="form-input">
               </div>
               <div class="form-group">
-                <label for="tank-solar-2">BIOSOLAR B50 (Tanki 2 - FAME)</label>
+                <label for="tank-solar-2">BIOSOLAR B50 (Tank 2 - FAME)</label>
                 <input type="text" id="tank-solar-2" placeholder="contoh: 8" class="form-input">
               </div>
             </div>
 
-            <div class="form-category-header">Lainnya</div>
+            <!-- Lainnya Grid -->
+            <div class="form-category-header">Produk Lainnya</div>
 
-            <!-- Pertadex / Pertamax Turbo / Avtur -->
-            <div class="form-row inline-three">
+            <div class="form-grid-fluid">
               <div class="form-group">
                 <label for="tank-pertadex">PERTADEX</label>
                 <input type="text" id="tank-pertadex" placeholder="17" class="form-input">
@@ -202,7 +199,6 @@
     </main>
   </div>
 
-  <!-- Load xlsx library locally -->
   <script src="xlsx.full.min.js"></script>
   <script src="popup.js"></script>
 </body>
