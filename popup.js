@@ -223,25 +223,31 @@ class ExcelParser {
 
     // Skenario 3: Jumlah LO > Jumlah Produk (misal 3 LO, 2 Produk)
     if (loList.length > produkList.length) {
-      const isSubsidi = (pName) => {
+      // Helper skor prioritas alokasi sisa LO:
+      // Pertalite (100) > Biosolar/Solar (80) > Dexlite/Pertadex (60) > Pertamax (40) > Lainnya (10)
+      const getPriorityScore = (pName) => {
         const u = (pName || '').toUpperCase();
-        return u.includes('PERTALITE') || u.includes('SOLAR') || u.includes('BIOSOLAR');
+        if (u.includes('PERTALITE')) return 100;
+        if (u.includes('SOLAR') || u.includes('BIOSOLAR')) return 80;
+        if (u.includes('DEXLITE') || u.includes('PERTADEX')) return 60;
+        if (u.includes('PERTAMAX')) return 40;
+        return 10;
       };
 
       const loCounts = new Array(produkList.length).fill(1);
       let remainingLOs = loList.length - produkList.length;
 
-      const subsidiIndices = [];
-      for (let i = 0; i < produkList.length; i++) {
-        if (isSubsidi(produkList[i])) {
-          subsidiIndices.push(i);
-        }
-      }
+      // Urutkan indeks produk dari prioritas tertinggi ke terendah
+      const indicesWithScore = produkList.map((p, idx) => ({
+        idx,
+        score: getPriorityScore(p)
+      }));
 
-      const targetIndices = subsidiIndices.length > 0 ? subsidiIndices : [0];
+      indicesWithScore.sort((a, b) => b.score - a.score);
+
       let targetIdxPointer = 0;
       while (remainingLOs > 0) {
-        const idxToGive = targetIndices[targetIdxPointer % targetIndices.length];
+        const idxToGive = indicesWithScore[targetIdxPointer % indicesWithScore.length].idx;
         loCounts[idxToGive]++;
         remainingLOs--;
         targetIdxPointer++;
