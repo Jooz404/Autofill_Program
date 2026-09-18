@@ -218,6 +218,8 @@ html, body {
 
 .tab-section.active {
   display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
 /* Fluid Cards */
@@ -454,6 +456,13 @@ html, body {
 }
 
 /* Terminal Log Panel */
+.log-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 180px;
+}
+
 .clear-log {
   font-size: 10.5px;
   color: var(--text-muted);
@@ -466,7 +475,8 @@ html, body {
 }
 
 .log-terminal {
-  height: 140px;
+  flex: 1;
+  min-height: 120px;
   background: #04060a;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 7px;
