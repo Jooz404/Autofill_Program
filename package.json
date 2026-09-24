@@ -1,0 +1,12 @@
+{
+  "name": "project-autofill-rsd",
+  "version": "1.0.0",
+  "description": "Autofill Chrome Extension Automation",
+  "main": "background.js",
+  "scripts": {
+    "lint": "eslint content.js popup.js background.js penyimpanan.js"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
+  }
+}

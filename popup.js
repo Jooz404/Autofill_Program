@@ -494,18 +494,31 @@ class PopupAppManager {
     }
   }
 
-  initTabNavigation() {
+  switchTab(tabName) {
     const tabs = document.querySelectorAll('.tab-btn');
     const tabSections = document.querySelectorAll('.tab-section');
 
     tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        tabs.forEach(t => t.classList.remove('active'));
-        tabSections.forEach(s => s.classList.remove('active'));
-
+      tab.classList.remove('active');
+      if (tab.dataset.tab === tabName) {
         tab.classList.add('active');
-        const activeSection = document.getElementById('tab-' + tab.dataset.tab);
-        if (activeSection) activeSection.classList.add('active');
+      }
+    });
+
+    tabSections.forEach(s => {
+      s.classList.remove('active');
+      if (s.id === 'tab-' + tabName) {
+        s.classList.add('active');
+      }
+    });
+  }
+
+  initTabNavigation() {
+    const tabs = document.querySelectorAll('.tab-btn');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.switchTab(tab.dataset.tab);
       });
     });
   }
@@ -603,6 +616,9 @@ class PopupAppManager {
   }
 
   resetAutofill() {
+    const isConfirmed = confirm('Apakah Anda yakin ingin me-reset semua data transaksi?\n\n⚠️ PERHATIAN: Pengaturan nomor tangki akan dikembalikan ke nilai bawaan (default).');
+    if (!isConfirmed) return;
+
     chrome.storage.local.clear(() => {
       this.parsedRows = [];
       this.isRunning = false;
@@ -617,6 +633,11 @@ class PopupAppManager {
       if (this.btnStart) this.btnStart.setAttribute('disabled', 'true');
 
       this.logger.addLog('Semua data dan antrean transaksi dibersihkan.', 'system');
+      this.logger.addLog('⚠️ PENGINGAT: Nomor tangki kembali ke DEFAULT. Harap periksa & sesuaikan di tab "Setting Tanki"!', 'warn');
+
+      // Tampilkan alert pengingat tegas & alihkan ke tab Setting Tanki
+      alert('⚠️ PENGINGAT PENTING - SETTING TANKI!\n\nData transaksi telah dibersihkan dan nomor tangki dikembalikan ke pengaturan DEFAULT.\n\nHarap periksa dan setel ulang "Setting Tanki" (Pertalite, Pertamax, Biosolar, dll.) pada tab Setting Tanki sebelum Anda memulai autofill baru!');
+      this.switchTab('tanks');
     });
   }
 

@@ -962,92 +962,92 @@ class ProcessBridgePageHandler extends BasePageHandler {
           targetStage = 'PENGISIAN_SUBMITTED';
           targetKw = 'gate out';
         } else {
-        Logger.log(`Seluruh aktivitas Penyaluran Nopol ${rowData.nopol} sudah berstatus COMPLETED.`, 'success');
-        if (isWorker) {
-          Logger.log(`[Worker Tab] Mengirim sinyal WORKER_TASK_COMPLETED untuk plat ${rowData.nopol}...`, 'success');
-          chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
-        } else {
-          chrome.storage.local.get(['currentIndex'], (resIdx) => {
-            const nextIdx = (resIdx.currentIndex || 0) + 1;
-            chrome.storage.local.set({
-              currentIndex: nextIdx,
-              autofillStage: 'CREATE_PENYALURAN'
-            }, () => {
-              const penyaluranLink = document.querySelector('a[href*="PenyaluranList"]') || document.querySelector('a[href*="penyaluran_list"]');
-              if (penyaluranLink) penyaluranLink.click();
-              else window.location.href = '/PenyaluranList';
-            });
-          });
-        }
-        return;
-      }
-    } else {
-      targetStage = 'CREATE_PENYALURAN';
-      targetKw = 'gate in';
-    }
-
-    // Update autofillStage di storage jika terdeteksi maju
-    if (targetStage !== stage) {
-      Logger.log(`Deteksi status tabel: Meng-update stage otomatis "${stage}" -> "${targetStage}"`, 'info');
-      if (isWorker) WorkerContextManager.setStage(targetStage);
-      else chrome.storage.local.set({ autofillStage: targetStage });
-    }
-
-    // Cari link spesifik untuk targetKw
-    const activeStatus = getStepStatus(targetKw);
-    let linkToClick = activeStatus.link;
-
-    if (!linkToClick) {
-      const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a[href]'));
-      // Prioritaskan link subaktivitas / gatein / aktivitastabel / aktivitaspenyaluran di seluruh tabel yang belum completed
-      linkToClick = bodyLinks.find(l => {
-        const href = (l.getAttribute('href') || '').toLowerCase();
-        if (href.includes('dokumen') || href.includes('showmaster') || href.includes('showdetail')) return false;
-        if (!href.includes('subaktivitas') && !href.includes('gatein') && !href.includes('aktivitastabel') && !href.includes('aktivitaspenyaluran')) return false;
-        const row = l.closest('tr');
-        if (!row) return false;
-        const rowText = row.textContent.toLowerCase();
-        return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
-      }) || bodyLinks.find(l => {
-        const href = (l.getAttribute('href') || '').toLowerCase();
-        if (href.includes('dokumen') || href.includes('showmaster') || href.includes('aktivitasedit') || href.includes('aktivitasview') || href.includes('showdetail')) return false;
-        const row = l.closest('tr');
-        if (!row) return false;
-        const rowText = row.textContent.toLowerCase();
-        return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
-      });
-    }
-
-    if (linkToClick) {
-      if (linkToClick.dataset.autofillNavigating === 'true') {
-        Logger.log(`Navigasi ke subaktivitas "${targetKw}" sedang berlangsung. Menunggu respon browser...`, 'info');
-        return;
-      }
-      const linkText = linkToClick.textContent.trim();
-      Logger.log(`Menemukan tautan aktivitas target "${targetKw}": "${linkText}". Mengklik dalam ${this.stepDelay / 1000} detik...`, 'info');
-
-      linkToClick.dataset.autofillNavigating = 'true';
-      linkToClick.style.opacity = '0.5';
-      // Kunci polling 15 detik agar browser bebas memuat halaman pada jaringan lambat
-      window._autofillLockUntil = Date.now() + 15000;
-
-      setTimeout(() => {
-        if (targetKw === 'pengisian') {
+          Logger.log(`Seluruh aktivitas Penyaluran Nopol ${rowData.nopol} sudah berstatus COMPLETED.`, 'success');
           if (isWorker) {
-            sessionStorage.setItem('currentCompPos', '1');
-            linkToClick.click();
+            Logger.log(`[Worker Tab] Mengirim sinyal WORKER_TASK_COMPLETED untuk plat ${rowData.nopol}...`, 'success');
+            chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
           } else {
-            chrome.storage.local.set({ currentCompPos: 1 }, () => {
-              linkToClick.click();
+            chrome.storage.local.get(['currentIndex'], (resIdx) => {
+              const nextIdx = (resIdx.currentIndex || 0) + 1;
+              chrome.storage.local.set({
+                currentIndex: nextIdx,
+                autofillStage: 'CREATE_PENYALURAN'
+              }, () => {
+                const penyaluranLink = document.querySelector('a[href*="PenyaluranList"]') || document.querySelector('a[href*="penyaluran_list"]');
+                if (penyaluranLink) penyaluranLink.click();
+                else window.location.href = '/PenyaluranList';
+              });
             });
           }
-        } else {
-          linkToClick.click();
+          return;
         }
-      }, this.stepDelay);
-    } else {
-      Logger.log(`Tidak ada tautan aktif untuk step "${targetKw}". Menunggu siklus berikutnya...`, 'warn');
-    }
+      } else {
+        targetStage = 'CREATE_PENYALURAN';
+        targetKw = 'gate in';
+      }
+
+      // Update autofillStage di storage jika terdeteksi maju
+      if (targetStage !== stage) {
+        Logger.log(`Deteksi status tabel: Meng-update stage otomatis "${stage}" -> "${targetStage}"`, 'info');
+        if (isWorker) WorkerContextManager.setStage(targetStage);
+        else chrome.storage.local.set({ autofillStage: targetStage });
+      }
+
+      // Cari link spesifik untuk targetKw
+      const activeStatus = getStepStatus(targetKw);
+      let linkToClick = activeStatus.link;
+
+      if (!linkToClick) {
+        const bodyLinks = Array.from(document.querySelectorAll('table tbody tr td a[href]'));
+        // Prioritaskan link subaktivitas / gatein / aktivitastabel / aktivitaspenyaluran di seluruh tabel yang belum completed
+        linkToClick = bodyLinks.find(l => {
+          const href = (l.getAttribute('href') || '').toLowerCase();
+          if (href.includes('dokumen') || href.includes('showmaster') || href.includes('showdetail')) return false;
+          if (!href.includes('subaktivitas') && !href.includes('gatein') && !href.includes('aktivitastabel') && !href.includes('aktivitaspenyaluran')) return false;
+          const row = l.closest('tr');
+          if (!row) return false;
+          const rowText = row.textContent.toLowerCase();
+          return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
+        }) || bodyLinks.find(l => {
+          const href = (l.getAttribute('href') || '').toLowerCase();
+          if (href.includes('dokumen') || href.includes('showmaster') || href.includes('aktivitasedit') || href.includes('aktivitasview') || href.includes('showdetail')) return false;
+          const row = l.closest('tr');
+          if (!row) return false;
+          const rowText = row.textContent.toLowerCase();
+          return !rowText.includes('completed') && !rowText.includes('selesai') && !rowText.includes('100%');
+        });
+      }
+
+      if (linkToClick) {
+        if (linkToClick.dataset.autofillNavigating === 'true') {
+          Logger.log(`Navigasi ke subaktivitas "${targetKw}" sedang berlangsung. Menunggu respon browser...`, 'info');
+          return;
+        }
+        const linkText = linkToClick.textContent.trim();
+        Logger.log(`Menemukan tautan aktivitas target "${targetKw}": "${linkText}". Mengklik dalam ${this.stepDelay / 1000} detik...`, 'info');
+
+        linkToClick.dataset.autofillNavigating = 'true';
+        linkToClick.style.opacity = '0.5';
+        // Kunci polling 15 detik agar browser bebas memuat halaman pada jaringan lambat
+        window._autofillLockUntil = Date.now() + 15000;
+
+        setTimeout(() => {
+          if (targetKw === 'pengisian') {
+            if (isWorker) {
+              sessionStorage.setItem('currentCompPos', '1');
+              linkToClick.click();
+            } else {
+              chrome.storage.local.set({ currentCompPos: 1 }, () => {
+                linkToClick.click();
+              });
+            }
+          } else {
+            linkToClick.click();
+          }
+        }, this.stepDelay);
+      } else {
+        Logger.log(`Tidak ada tautan aktif untuk step "${targetKw}". Menunggu siklus berikutnya...`, 'warn');
+      }
     });
   }
 }
@@ -1464,10 +1464,10 @@ class PengisianPageHandler extends BasePageHandler {
         const itemsList = (rowData.itemsList && rowData.itemsList.length > 0)
           ? rowData.itemsList
           : [{
-              produk: rowData.produk || '',
-              loList: rowData.loList || [],
-              combinedLO: (rowData.loList || []).join(', ')
-            }];
+            produk: rowData.produk || '',
+            loList: rowData.loList || [],
+            combinedLO: (rowData.loList || []).join(', ')
+          }];
 
         const totalItems = itemsList.length;
 
@@ -1561,7 +1561,7 @@ class PengisianPageHandler extends BasePageHandler {
           }
         } else {
           Logger.log(`Seluruh baris detail produk (${totalItems} item) selesai dimasukkan/tersedia di draf (Tabel: ${existingCount} baris). Menyiapkan Save Draft & Submit final...`, 'success');
-          
+
           window._autofillLockUntil = Date.now() + 10000;
 
           const saveBtn = document.getElementById('btn-save') || document.querySelector('button[data-nextstatus="Draft"]');
@@ -1695,7 +1695,7 @@ class PengisianPageHandler extends BasePageHandler {
       const currentText = productSelect.options[productSelect.selectedIndex]?.text || '';
       if (pUpper.includes('PERTAMAX') && !pUpper.includes('TURBO') && currentText.toUpperCase().includes('TURBO')) {
         Logger.log(`↩️ Portal memilih "${currentText}". Mengoreksi ke produk PERTAMAX (non-turbo)...`, 'warn');
-        await Select2Helper.setSelectByValueOrText(productSelect, 'PERTAMAX').catch(() => {});
+        await Select2Helper.setSelectByValueOrText(productSelect, 'PERTAMAX').catch(() => { });
       } else {
         Logger.log(`[Produk Auto] Produk "${activeProduct}" disesuaikan berdasarkan pilihan Tangki (${tank1Val}).`, 'info');
       }
@@ -1771,10 +1771,18 @@ class PengisianPageHandler extends BasePageHandler {
   saveModal(subIdx) {
     if (window._isSavingModal) return;
     window._isSavingModal = true;
-    window._autofillLockUntil = Date.now() + 6000;
+    window._autofillLockUntil = Date.now() + 10000;
 
-    const modalSaveBtn = document.querySelector('.modal-footer button.btn-success, #form_input_modal button[type="submit"], #btn_simpan_modal, .modal button.btn-success, .modal button.btn-primary') ||
-      Array.from(document.querySelectorAll('.modal button, button')).find(b => DOMUtils.isVisible(b) && (b.textContent.includes('Add') || b.textContent.includes('Simpan') || b.textContent.includes('Tambah')));
+    const modalSaveBtn = document.getElementById('btn-add-detail') ||
+      document.getElementById('btn_simpan_modal') ||
+      document.getElementById('btn_simpan') ||
+      document.getElementById('btn_tambah') ||
+      document.getElementById('btn-save-modal') ||
+      document.querySelector('.modal.show button.btn-success, .modal.show button[type="submit"], #form_input_modal button[type="submit"], #form_input_modal button.btn-success, .modal.show button.btn-primary, .modal-footer button.btn-success') ||
+      Array.from(document.querySelectorAll('.modal button, #form_input_modal button, button')).find(b => DOMUtils.isVisible(b) && (
+        b.id.includes('simpan') || b.id.includes('tambah') || b.id.includes('add') ||
+        b.textContent.includes('Add') || b.textContent.includes('Simpan') || b.textContent.includes('Tambah') || b.textContent.includes('+ Add')
+      ));
 
     if (modalSaveBtn) {
       if (modalSaveBtn.dataset.autofillSaving === 'true') {
@@ -1782,25 +1790,56 @@ class PengisianPageHandler extends BasePageHandler {
         return;
       }
       modalSaveBtn.dataset.autofillSaving = 'true';
-      Logger.log(`Menyimpan detail modal LO ke-${subIdx + 1}...`, 'success');
+      Logger.log(`Menyimpan detail modal LO ke-${subIdx + 1} via (#${modalSaveBtn.id || modalSaveBtn.className || 'button'})...`, 'success');
+
+      if (modalSaveBtn.tagName === 'BUTTON' && !modalSaveBtn.getAttribute('type')) {
+        modalSaveBtn.setAttribute('type', 'button');
+      }
+
+      const executeSaveAndAdvance = () => {
+        // Trigger event klik sintesis lengkap
+        DOMUtils.clickElement(modalSaveBtn);
+
+        // Jika modal berada dalam form, bantu trigger submit event
+        const parentForm = modalSaveBtn.closest('form') || document.querySelector('#form_input_modal form, .modal.show form');
+        if (parentForm) {
+          try {
+            parentForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+          } catch (e) { }
+        }
+
+        // Verifikasi Penutupan Modal & Automatic Retry (1.2 detik setelah klik)
+        setTimeout(() => {
+          const modalEl = document.querySelector('.modal.show, #form_input_modal, select#NomorTangki');
+          const isStillOpen = modalEl && DOMUtils.isVisible(modalEl);
+
+          if (isStillOpen) {
+            Logger.log('⚠️ Modal masih terdeteksi terbuka setelah 1.2s. Memicu klik retry pada tombol Add...', 'warn');
+            try {
+              DOMUtils.clickElement(modalSaveBtn);
+              modalSaveBtn.click();
+            } catch (e) { }
+          }
+
+          // Bebaskan lock saving modal setelah verifikasi
+          setTimeout(() => {
+            window._isSavingModal = false;
+            delete modalSaveBtn.dataset.autofillSaving;
+          }, 1000);
+        }, 1200);
+      };
 
       if (WorkerContextManager.isWorker()) {
         WorkerContextManager.setSubIdx(subIdx + 1);
-        setTimeout(() => {
-          modalSaveBtn.click();
-          setTimeout(() => { window._isSavingModal = false; }, 2000);
-        }, 500);
+        setTimeout(executeSaveAndAdvance, 300);
       } else {
         chrome.storage.local.set({ subIdx: subIdx + 1 }, () => {
-          setTimeout(() => {
-            modalSaveBtn.click();
-            setTimeout(() => { window._isSavingModal = false; }, 2000);
-          }, 500);
+          setTimeout(executeSaveAndAdvance, 300);
         });
       }
     } else {
       window._isSavingModal = false;
-      Logger.log('Tombol Simpan/Add Modal tidak ditemukan.', 'warn');
+      Logger.log('Tombol Simpan/Add Modal tidak ditemukan di DOM.', 'warn');
     }
   }
 
@@ -2069,9 +2108,57 @@ class AutofillEngine {
     });
   }
 
+  checkAndHandleStatusChangedPopup() {
+    const popupContainers = document.querySelectorAll('.modal.show, .swal2-container, #modal_alert, .bootbox, div[role="dialog"], .modal');
+
+    for (const popup of popupContainers) {
+      if (!DOMUtils.isVisible(popup)) continue;
+
+      const popupText = (popup.innerText || popup.textContent || '').toLowerCase();
+
+      const isStatusChangedError = popupText.includes('diubah oleh pengguna lain') ||
+        (popupText.includes('status aktivitas') && popupText.includes('refresh halaman')) ||
+        popupText.includes('silakan refresh halaman') ||
+        popupText.includes('silahkan refresh halaman');
+
+      if (isStatusChangedError) {
+        if (window._isHandlingStatusPopup) return true;
+        window._isHandlingStatusPopup = true;
+
+        window._autofillLockUntil = Date.now() + 30000;
+
+        Logger.log('⚠️ Pop-up Terdeteksi: "Status aktivitas telah diubah oleh pengguna lain. Silakan refresh halaman." Menutup modal dan memicu auto-refresh...', 'error');
+
+        const okBtn = popup.querySelector('#confirmBtn, button.btn-primary, button.swal2-confirm, button.btn-success') ||
+          Array.from(popup.querySelectorAll('button, a')).find(b => {
+            const txt = (b.textContent || '').trim().toUpperCase();
+            return txt === 'OK' || txt === 'CLOSE' || txt === 'TUTUP';
+          });
+
+        if (okBtn && DOMUtils.isVisible(okBtn)) {
+          DOMUtils.clickElement(okBtn);
+        }
+
+        setTimeout(() => {
+          Logger.log('🔄 Memuat ulang halaman (location.reload)...', 'info');
+          window.location.reload();
+        }, 600);
+
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   async initAutofill() {
     // 0. Deteksi Halaman Blank / Server Error (504 Timeout, 500 Error, dsb)
     if (NetworkWatchdog.checkAndRecover()) {
+      return;
+    }
+
+    // 0b. Deteksi Pop-up Error "Status aktivitas telah diubah oleh pengguna lain"
+    if (this.checkAndHandleStatusChangedPopup()) {
       return;
     }
 
