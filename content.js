@@ -1996,7 +1996,7 @@ class PengisianPageHandler extends BasePageHandler {
   }
 }
 
-/// Handler Halaman 6: Formulir MT Gate Out
+/// Handler Halaman 6: Formulir MT Gate Out (FIXED with Post-Save Submit Polling)
 class GateOutPageHandler extends BasePageHandler {
   handle(rowData, stage) {
     const isWorker = WorkerContextManager.isWorker();
@@ -2011,75 +2011,212 @@ class GateOutPageHandler extends BasePageHandler {
       return;
     }
 
-    chrome.storage.local.get(['gateOutSubmitted'], (resStorage) => {
-      // 1. Prioritas Utama: Cek dulu apakah tombol Submit (#btn-completed / #btn-completedEdit) visible ada
-      const completedBtn = Array.from(document.querySelectorAll('#btn-completed, #btn-completedEdit, button.btn-success'))
-        .find(btn => DOMUtils.isVisible(btn) && (btn.id.includes('completed') || btn.textContent.trim().toLowerCase().includes('submit')));
+    chrome.storage.local.get(['gateOutSubmitted', 'gateOutSaved'], (resStorage) => {
+      const isSubmittedState = isWorker ? isGateOutDone : resStorage.gateOutSubmitted;
 
-      if (completedBtn) {
-        Logger.log(`Tombol Submit final Gate Out (#${completedBtn.id || 'btn-completed'}) terdeteksi! Mengirimkan data Gate Out final...`, 'success');
+      // ---------- helpers lokal ----------
+      const findSubmitBtn = () => {
+        return Array.from(document.querySelectorAll(
+          '#btn-completed, #btn-completedEdit, button.btn-success'
+        )).find(btn => {
+          if (!DOMUtils.isVisible(btn)) return false;
+          const id = (btn.id || '').toLowerCase();
+          const text = (btn.textContent || '').trim().toLowerCase();
+          return id.includes('completed') || text.includes('submit') || text.includes('selesai');
+        });
+      };
+
+      const findSaveBtn = () => {
+        return Array.from(document.querySelectorAll(
+          '#btn-draft, #btn-save, #btn-action, button.btn-primary'
+        )).find(btn => {
+          if (!DOMUtils.isVisible(btn)) return false;
+          const id = (btn.id || '').toLowerCase();
+          const text = (btn.textContent || '').trim().toLowerCase();
+          if (id.includes('editing') || id.includes('cancel') || id.includes('completed')) return false;
+          if (text.includes('edit') || text.includes('cancel') || text.includes('submit')) return false;
+          return id.includes('draft') || id.includes('save') || text.includes('save') || text.includes('simpan');
+        });
+      };
+
+      const findEditBtn = () => {
+        const btn = document.getElementById('btn-editing');
+        if (btn && DOMUtils.isVisible(btn)) return btn;
+        return Array.from(document.querySelectorAll('button.btn-primary, button.ew-btn'))
+          .find(b => DOMUtils.isVisible(b) &&
+            ((b.id || '').toLowerCase().includes('editing') ||
+              (b.textContent || '').trim().toLowerCase().includes('edit')));
+      };
+
+      const findConfirmBtn = () => {
+        return document.getElementById('confirmBtn') ||
+          document.querySelector('.modal.show #confirmBtn') ||
+          document.querySelector('button[id*="confirmBtn"]');
+      };
+
+      const clickSubmitAndFinish = (submitBtn) => {
+        Logger.log(`Tombol Submit final Gate Out (#${submitBtn.id || 'btn-completed'}) terdeteksi! Mengklik Submit final...`, 'success');
+
+        if (WorkerContextManager.isWorker()) {
+          WorkerContextManager.setSubmitted('gateOutSubmitted', true);
+        } else {
+          chrome.storage.local.set({ gateOutSubmitted: true, gateOutSaved: false });
+        }
+
+        DOMUtils.clickElement(submitBtn);
+
+        // Polling konfirmasi dialog (#confirmBtn) jika ada modal konfirmasi portal
         setTimeout(() => {
-          if (isWorker) {
-            WorkerContextManager.setSubmitted('gateOutSubmitted', true);
-            DOMUtils.clickElement(completedBtn);
-            setTimeout(() => {
-              chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
-            }, this.stepDelay + 1000);
-          } else {
-            chrome.storage.local.set({ gateOutSubmitted: true }, () => {
-              DOMUtils.clickElement(completedBtn);
-              setTimeout(() => {
-                chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
-              }, this.stepDelay + 1000);
-            });
+          const confirmBtn = findConfirmBtn();
+          if (confirmBtn && DOMUtils.isVisible(confirmBtn)) {
+            Logger.log('Tombol Konfirmasi Submit Gate Out (#confirmBtn) terdeteksi! Mengklik konfirmasi...', 'success');
+            DOMUtils.clickElement(confirmBtn);
           }
-        }, this.stepDelay);
-        return;
-      }
 
-      // 2. Baru kalau tombol Submit TIDAK ADA / belum visible, cek apakah transaksi sudah COMPLETED atau pernah disubmit
-      if (isGateOutDone || resStorage.gateOutSubmitted || DOMUtils.isActivityStatusCompleted()) {
-        Logger.log('Aktivitas Gate Out terdeteksi telah disubmit/COMPLETED. Menutup Tab Pekerja otomatis...', 'success');
+          setTimeout(() => {
+            Logger.log('Pengiriman Gate Out final selesai. Menutup Tab Pekerja...', 'success');
+            chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+          }, this.stepDelay + 1000);
+        }, 800);
+      };
+
+      // ---------- 1. Jika sudah disubmit final sebelumnya ----------
+      if (isSubmittedState) {
+        Logger.log('Aktivitas Gate Out terdeteksi telah disubmit/COMPLETED. Menutup Tab Pekerja...', 'success');
         chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
         return;
       }
 
-      // 3. Lakukan pengisian data draf Gate Out
+      // ---------- 2. Submit sudah visible → langsung klik ----------
+      const immediateSubmit = findSubmitBtn();
+      if (immediateSubmit) {
+        // Pastikan field terisi dulu sebelum Submit
+        const segelInput = document.getElementById('x_NomorSegel');
+        const gateOutInput = document.getElementById('x_WaktuGateOut') || document.querySelector('.tempus-dominus-input');
+
+        if (segelInput && (!segelInput.value || segelInput.value.trim() === '')) {
+          const segelStr = rowData.segelList ? rowData.segelList.join(', ') : '';
+          segelInput.value = segelStr;
+          segelInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (gateOutInput && (!gateOutInput.value || gateOutInput.value.trim() === '')) {
+          gateOutInput.value = rowData.gateOutTime || '';
+          gateOutInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        setTimeout(() => {
+          const btn = findSubmitBtn() || immediateSubmit;
+          clickSubmitAndFinish(btn);
+        }, 500);
+        return;
+      }
+
+      // ---------- 3. Ada tombol Edit → klik dulu untuk masuk mode edit ----------
+      const editBtn = findEditBtn();
+      if (editBtn && !findSaveBtn()) {
+        Logger.log('Mode view Gate Out terdeteksi. Mengklik tombol Edit untuk membuka formulir...', 'info');
+        setTimeout(() => {
+          DOMUtils.clickElement(editBtn);
+        }, this.stepDelay);
+        return;
+      }
+
+      // ---------- 4. Pengisian data + Save, lalu tunggu Submit ----------
+      window._autofillLockUntil = Date.now() + 35000;
+
       Logger.log('Mengisi data MT Gate Out...', 'info');
 
       const segelInput = document.getElementById('x_NomorSegel');
       if (segelInput) {
-        const segelStr = rowData.segelList.join(', ');
-        segelInput.value = segelStr;
-        segelInput.dispatchEvent(new Event('change'));
-        Logger.log(`Mengisi No Segel: ${segelStr}`, 'info');
+        const segelStr = (rowData.segelList || []).join(', ');
+        if (!segelInput.value || segelInput.value.trim() === '') {
+          segelInput.value = segelStr;
+          segelInput.dispatchEvent(new Event('change', { bubbles: true }));
+          Logger.log(`Mengisi No Segel: ${segelStr}`, 'info');
+        }
       }
 
       const gateOutInput = document.getElementById('x_WaktuGateOut') || document.querySelector('.tempus-dominus-input');
       if (gateOutInput) {
-        gateOutInput.value = rowData.gateOutTime;
-        gateOutInput.dispatchEvent(new Event('change'));
-        Logger.log(`Mengisi Waktu Gate Out: ${rowData.gateOutTime}`, 'info');
+        if (!gateOutInput.value || gateOutInput.value.trim() === '') {
+          gateOutInput.value = rowData.gateOutTime || '';
+          gateOutInput.dispatchEvent(new Event('change', { bubbles: true }));
+          Logger.log(`Mengisi Waktu Gate Out: ${rowData.gateOutTime}`, 'info');
+        }
       }
 
-      let submitAttempts = 0;
-      const submitInterval = setInterval(() => {
-        submitAttempts++;
-        const segelVal = document.getElementById('x_NomorSegel')?.value;
-        const waktuVal = document.getElementById('x_WaktuGateOut')?.value;
+      let attempts = 0;
+      const maxAttempts = 20;
 
-        if ((segelVal && waktuVal) || submitAttempts > 10) {
-          clearInterval(submitInterval);
-          const saveBtn = document.getElementById('btn-draft') || document.getElementById('btn-save') || document.getElementById('btn-action') || document.querySelector('button.btn-primary');
-          if (saveBtn) {
-            Logger.log(`Mengklik Save draf Gate Out (#${saveBtn.id}), menunggu tombol submit muncul...`, 'info');
-            setTimeout(() => {
-              saveBtn.click();
-            }, this.stepDelay);
-          } else {
-            Logger.log('Tombol Save draf Gate Out tidak ditemukan.', 'error');
-          }
+      const fillAndSaveInterval = setInterval(() => {
+        attempts++;
+
+        const segelVal = document.getElementById('x_NomorSegel')?.value;
+        const waktuVal = (document.getElementById('x_WaktuGateOut') || document.querySelector('.tempus-dominus-input'))?.value;
+        const fieldsReady = (segelVal && segelVal.trim() !== '') || (waktuVal && waktuVal.trim() !== '') || attempts > 8;
+
+        const submitNow = findSubmitBtn();
+        if (submitNow) {
+          clearInterval(fillAndSaveInterval);
+          clickSubmitAndFinish(submitNow);
+          return;
         }
+
+        if (!fieldsReady && attempts < maxAttempts) {
+          return;
+        }
+
+        const saveBtn = findSaveBtn();
+        if (!saveBtn) {
+          if (attempts >= maxAttempts) {
+            clearInterval(fillAndSaveInterval);
+            Logger.log('Tombol Save draf Gate Out (#btn-draft / #btn-save) tidak ditemukan setelah 10 detik.', 'error');
+          }
+          return;
+        }
+
+        clearInterval(fillAndSaveInterval);
+        Logger.log(`Isian Gate Out siap. Mengklik Save (#${saveBtn.id || 'btn-save'}), memantau kemunculan Submit final...`, 'info');
+
+        setTimeout(() => {
+          chrome.storage.local.set({ gateOutSaved: true }, () => {
+            DOMUtils.clickElement(saveBtn);
+            Logger.log('Save diklik. Menunggu tombol Submit final Gate Out muncul...', 'info');
+
+            let waitAttempts = 0;
+            const waitSubmit = setInterval(() => {
+              waitAttempts++;
+
+              const confirmModal = findConfirmBtn();
+              if (confirmModal && DOMUtils.isVisible(confirmModal)) {
+                clearInterval(waitSubmit);
+                Logger.log('Konfirmasi modal submit terdeteksi! Mengklik konfirmasi...', 'success');
+                DOMUtils.clickElement(confirmModal);
+                setTimeout(() => {
+                  if (isWorker) WorkerContextManager.setSubmitted('gateOutSubmitted', true);
+                  else chrome.storage.local.set({ gateOutSubmitted: true });
+                  chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+                }, this.stepDelay + 1000);
+                return;
+              }
+
+              const submitBtn = findSubmitBtn();
+              if (submitBtn) {
+                clearInterval(waitSubmit);
+                clickSubmitAndFinish(submitBtn);
+                return;
+              }
+
+              if (waitAttempts > 40) { // ~20 detik
+                clearInterval(waitSubmit);
+                Logger.log('Timeout (20s) menunggu tombol Submit final Gate Out. Memeriksa ulang status...', 'warn');
+                if (isWorker) WorkerContextManager.setSubmitted('gateOutSubmitted', true);
+                else chrome.storage.local.set({ gateOutSubmitted: true });
+                chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+              }
+            }, 500);
+          });
+        }, this.stepDelay);
       }, 500);
     });
   }
