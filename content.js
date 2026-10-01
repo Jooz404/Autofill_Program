@@ -387,6 +387,51 @@ class Select2Helper {
   }
 }
 
+// 3a. Nopol Mapping Storage Manager
+class NopolMappingStore {
+  static getMappings() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['nopolMappings'], (res) => {
+        resolve(res.nopolMappings || {});
+      });
+    });
+  }
+
+  static saveMapping(idReferensi, nopol) {
+    if (!idReferensi || !nopol) return;
+    const cleanId = String(idReferensi).trim();
+    const cleanNopol = DOMUtils.normalizeNopol(nopol);
+    if (!cleanId || !cleanNopol) return;
+
+    chrome.storage.local.get(['nopolMappings'], (res) => {
+      const mappings = res.nopolMappings || {};
+      if (mappings[cleanId] !== cleanNopol) {
+        mappings[cleanId] = cleanNopol;
+        chrome.storage.local.set({ nopolMappings: mappings }, () => {
+          Logger.log(`[Nopol Mapping] Tersimpan: ${cleanId} -> ${cleanNopol}`, 'info');
+        });
+      }
+    });
+  }
+
+  static findNopolById(mappings, idReferensi) {
+    if (!mappings || !idReferensi) return null;
+    const cleanId = String(idReferensi).trim();
+    return mappings[cleanId] || null;
+  }
+
+  static findIdByNopol(mappings, nopol) {
+    if (!mappings || !nopol) return null;
+    const cleanNopol = DOMUtils.normalizeNopol(nopol);
+    for (const [id, np] of Object.entries(mappings)) {
+      if (DOMUtils.normalizeNopol(np) === cleanNopol) {
+        return id;
+      }
+    }
+    return null;
+  }
+}
+
 // 3. DOM Utilities Class
 class DOMUtils {
   static extractAmtId(rawSupir) {
@@ -453,7 +498,21 @@ class DOMUtils {
   }
 
   static getPageNopol() {
-    // 1. Cek input atau elemen spesifik Nomor Polisi
+    // 1. Cek sub-header teks (contoh: "PENYALURAN S-..., No Polisi : B9257SEW" atau "No Polisi : B9257SEW")
+    const pageText = document.body?.innerText || '';
+    const subHeaderMatch = pageText.match(/No\.?\s*Polisi\s*:\s*([A-Za-z0-9\s]+?)(?:,|\n|$)/i) ||
+                           pageText.match(/Nomor\s*Polisi\s*:\s*([A-Za-z0-9\s]+?)(?:,|\n|$)/i);
+
+    if (subHeaderMatch) {
+      const cleanSubVal = DOMUtils.normalizeNopol(subHeaderMatch[1]);
+      if (cleanSubVal) {
+        const idRef = DOMUtils.extractIdReferensi();
+        if (idRef) NopolMappingStore.saveMapping(idRef, cleanSubVal);
+        return cleanSubVal;
+      }
+    }
+
+    // 2. Cek input atau elemen spesifik Nomor Polisi
     const nopolInput = document.getElementById('x_NomorPolisi') ||
       document.querySelector('input[id*="NomorPolisi"]') ||
       document.querySelector('select[id*="NomorPolisi"]') ||
@@ -465,7 +524,7 @@ class DOMUtils {
       if (cleanVal) return cleanVal;
     }
 
-    // 2. Cek label / row yang memiliki teks "Nomor Polisi"
+    // 3. Cek label / row yang memiliki teks "Nomor Polisi"
     const labels = Array.from(document.querySelectorAll('label, td, th, div, span'));
     for (let label of labels) {
       const txt = label.textContent.trim().toLowerCase();
@@ -480,26 +539,43 @@ class DOMUtils {
       }
     }
 
-    // 3. Fallback scan regex pada seluruh body text untuk pola plat nomor
-    const pageText = document.body?.innerText || '';
+    // 4. Fallback scan regex pada seluruh body text untuk pola plat nomor
     const match = pageText.match(/\b([A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3})\b/);
     return match ? DOMUtils.normalizeNopol(match[1]) : null;
   }
 
-  static isRowMatchNopol(rowEl, targetNopol) {
+  static isRowMatchNopol(rowEl, targetNopol, mappings = {}) {
     const targetClean = DOMUtils.normalizeNopol(targetNopol);
     if (!targetClean) return false;
 
+    // 1. Cek langsung teks cell pada tabel (termasuk kolom Tujuan "NOPOL - SPBU")
     const cells = rowEl.querySelectorAll('td');
     for (let cell of cells) {
       const cellClean = DOMUtils.normalizeNopol(cell.textContent);
-      if (cellClean === targetClean) {
+      if (cellClean.includes(targetClean)) {
         return true;
       }
     }
 
     const rowClean = DOMUtils.normalizeNopol(rowEl.textContent);
-    return rowClean.includes(targetClean);
+    if (rowClean.includes(targetClean)) {
+      return true;
+    }
+
+    // 2. Pencocokan berbasis Nomor Penyaluran (IdReferensi) via nopolMappings
+    if (mappings && Object.keys(mappings).length > 0) {
+      const idMatch = rowEl.textContent.match(/\b(S-\d{4}-\d{8}-\d{4})\b/i) ||
+                      rowEl.textContent.match(/\b(S-[A-Za-z0-9\-]{10,25})\b/i);
+      if (idMatch) {
+        const rowIdRef = idMatch[1].trim();
+        const mappedNopol = mappings[rowIdRef];
+        if (mappedNopol && DOMUtils.normalizeNopol(mappedNopol) === targetClean) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   static isActivityStatusCompleted() {
@@ -633,7 +709,11 @@ class ListPageHandler extends BasePageHandler {
   handle(rowData, stage) {
     chrome.storage.local.get(['justCreated', 'gateOutSubmitted'], (res) => {
       if (res.justCreated) {
-        Logger.log('Deteksi berhasil mendaftarkan Penyaluran baru. Pindah ke tahap pencarian...', 'success');
+        Logger.log('Deteksi berhasil mendaftarkan Penyaluran baru. Memetakan Nopol baru & pindah ke tahap pencarian...', 'success');
+        const idRef = DOMUtils.extractIdReferensi();
+        if (idRef && rowData.nopol) {
+          NopolMappingStore.saveMapping(idRef, rowData.nopol);
+        }
         chrome.storage.local.set({ autofillStage: 'CLICK_PROCESS_LINK', justCreated: false }, () => {
           this.handle(rowData, 'CLICK_PROCESS_LINK');
         });
@@ -656,120 +736,122 @@ class ListPageHandler extends BasePageHandler {
       }
 
       Logger.log(`Memeriksa status transaksi di list untuk No Polisi target: ${rowData.nopol}...`, 'info');
-      const rows = document.querySelectorAll('table tbody tr');
-      let hasIncompleteRow = false;
-      let hasCompleteRow = false;
-      let incompleteLink = null;
+      NopolMappingStore.getMappings().then(mappings => {
+        const rows = document.querySelectorAll('table tbody tr');
+        let hasIncompleteRow = false;
+        let hasCompleteRow = false;
+        let incompleteLink = null;
 
-      for (const r of rows) {
-        if (DOMUtils.isRowMatchNopol(r, rowData.nopol)) {
-          const rowTextLower = r.innerText.toLowerCase();
-          const isComplete = rowTextLower.includes('complete') || rowTextLower.includes('selesai') || rowTextLower.includes('100%');
-          if (isComplete) {
-            hasCompleteRow = true;
-          } else {
-            const link = r.querySelector('[id*="LinkProses"] a, td.el_Penyaluran_LinkProses a, [id*="LinkAktivitas"] a, td[data-name="LinkAktivitas"] a, a[href*="proses"], a[href*="aktivitas"]');
-            if (link) {
-              hasIncompleteRow = true;
-              incompleteLink = link;
-            }
-          }
-        }
-      }
-
-      if (hasIncompleteRow && incompleteLink) {
-        if (incompleteLink.dataset.autofillNavigating === 'true') {
-          Logger.log(`Navigasi ke Halaman Proses sedang berlangsung untuk plat ${rowData.nopol}. Menunggu respon browser...`, 'info');
-          return;
-        }
-
-        // Cek dulu apakah nopol ini sedang aktif dikerjakan oleh Tab Pekerja lain
-        chrome.runtime.sendMessage({ action: 'GET_ACTIVE_WORKER_COUNT' }, (resCount) => {
-          if (resCount && resCount.activePlates) {
-            const normTarget = DOMUtils.normalizeNopol(rowData.nopol);
-            const isAlreadyActive = resCount.activePlates.some(p => DOMUtils.normalizeNopol(p) === normTarget);
-            if (isAlreadyActive) {
-              Logger.log(`[Master Dispatcher] Plat ${rowData.nopol} saat ini sedang dikerjakan oleh Tab Pekerja lain. Melompati pembukaan tab duplikat...`, 'warn');
-              chrome.storage.local.get(['currentIndex'], (resIdx) => {
-                const nextIdx = (resIdx.currentIndex || 0) + 1;
-                chrome.storage.local.set({
-                  currentIndex: nextIdx,
-                  autofillStage: 'CREATE_PENYALURAN'
-                }, () => {
-                  setTimeout(() => window.location.reload(), 1500);
-                });
-              });
-              return;
-            }
-          }
-
-          Logger.log(`Menemukan transaksi In Progress untuk plat ${rowData.nopol}. Mengirim ke Master Dispatcher...`, 'success');
-          incompleteLink.dataset.autofillNavigating = 'true';
-          incompleteLink.style.opacity = '0.5';
-
-          // Master Dispatcher: Membuka tab pekerja baru di background (Maksimal 3 tab paralel)
-          chrome.runtime.sendMessage({
-            action: 'OPEN_WORKER_TAB',
-            url: incompleteLink.href,
-            rowIndex: rowData._index || 0,
-            rowData: rowData
-          }, (res) => {
-            if (res && res.success) {
-              Logger.log(`[Master Dispatcher] Berhasil membuka Tab Pekerja #${res.tabId} untuk plat ${rowData.nopol}. (Aktif: ${res.activeCount}/${res.max || 3})`, 'success');
-              chrome.storage.local.get(['currentIndex'], (resIdx) => {
-                const nextIdx = (resIdx.currentIndex || 0) + 1;
-                chrome.storage.local.set({
-                  currentIndex: nextIdx,
-                  autofillStage: 'CREATE_PENYALURAN'
-                }, () => {
-                  setTimeout(() => window.location.reload(), 2500);
-                });
-              });
+        for (const r of rows) {
+          if (DOMUtils.isRowMatchNopol(r, rowData.nopol, mappings)) {
+            const rowTextLower = r.innerText.toLowerCase();
+            const isComplete = rowTextLower.includes('complete') || rowTextLower.includes('selesai') || rowTextLower.includes('100%');
+            if (isComplete) {
+              hasCompleteRow = true;
             } else {
-              const now = Date.now();
-              if (!window._lastQueueFullLog || (now - window._lastQueueFullLog > 10000)) {
-                window._lastQueueFullLog = now;
-                const reasonText = res?.reason === 'PLATE_ALREADY_PROCESSING' ? `Plat ${rowData.nopol} sudah aktif di tab pekerja` : `Antrean tab penuh (${res?.activeCount || 3}/${res?.max || 3})`;
-                Logger.log(`[Master Dispatcher] Tab pekerja ditunda: ${reasonText}. Menunggu slot selesai...`, 'warn');
+              const link = r.querySelector('[id*="LinkProses"] a, td.el_Penyaluran_LinkProses a, [id*="LinkAktivitas"] a, td[data-name="LinkAktivitas"] a, a[href*="proses"], a[href*="aktivitas"]');
+              if (link) {
+                hasIncompleteRow = true;
+                incompleteLink = link;
               }
-              incompleteLink.dataset.autofillNavigating = 'false';
-              incompleteLink.style.opacity = '1';
             }
+          }
+        }
+
+        if (hasIncompleteRow && incompleteLink) {
+          if (incompleteLink.dataset.autofillNavigating === 'true') {
+            Logger.log(`Navigasi ke Halaman Proses sedang berlangsung untuk plat ${rowData.nopol}. Menunggu respon browser...`, 'info');
+            return;
+          }
+
+          // Cek dulu apakah nopol ini sedang aktif dikerjakan oleh Tab Pekerja lain
+          chrome.runtime.sendMessage({ action: 'GET_ACTIVE_WORKER_COUNT' }, (resCount) => {
+            if (resCount && resCount.activePlates) {
+              const normTarget = DOMUtils.normalizeNopol(rowData.nopol);
+              const isAlreadyActive = resCount.activePlates.some(p => DOMUtils.normalizeNopol(p) === normTarget);
+              if (isAlreadyActive) {
+                Logger.log(`[Master Dispatcher] Plat ${rowData.nopol} saat ini sedang dikerjakan oleh Tab Pekerja lain. Melompati pembukaan tab duplikat...`, 'warn');
+                chrome.storage.local.get(['currentIndex'], (resIdx) => {
+                  const nextIdx = (resIdx.currentIndex || 0) + 1;
+                  chrome.storage.local.set({
+                    currentIndex: nextIdx,
+                    autofillStage: 'CREATE_PENYALURAN'
+                  }, () => {
+                    setTimeout(() => window.location.reload(), 1500);
+                  });
+                });
+                return;
+              }
+            }
+
+            Logger.log(`Menemukan transaksi In Progress untuk plat ${rowData.nopol}. Mengirim ke Master Dispatcher...`, 'success');
+            incompleteLink.dataset.autofillNavigating = 'true';
+            incompleteLink.style.opacity = '0.5';
+
+            // Master Dispatcher: Membuka tab pekerja baru di background (Maksimal 3 tab paralel)
+            chrome.runtime.sendMessage({
+              action: 'OPEN_WORKER_TAB',
+              url: incompleteLink.href,
+              rowIndex: rowData._index || 0,
+              rowData: rowData
+            }, (res) => {
+              if (res && res.success) {
+                Logger.log(`[Master Dispatcher] Berhasil membuka Tab Pekerja #${res.tabId} untuk plat ${rowData.nopol}. (Aktif: ${res.activeCount}/${res.max || 3})`, 'success');
+                chrome.storage.local.get(['currentIndex'], (resIdx) => {
+                  const nextIdx = (resIdx.currentIndex || 0) + 1;
+                  chrome.storage.local.set({
+                    currentIndex: nextIdx,
+                    autofillStage: 'CREATE_PENYALURAN'
+                  }, () => {
+                    setTimeout(() => window.location.reload(), 2500);
+                  });
+                });
+              } else {
+                const now = Date.now();
+                if (!window._lastQueueFullLog || (now - window._lastQueueFullLog > 10000)) {
+                  window._lastQueueFullLog = now;
+                  const reasonText = res?.reason === 'PLATE_ALREADY_PROCESSING' ? `Plat ${rowData.nopol} sudah aktif di tab pekerja` : `Antrean tab penuh (${res?.activeCount || 3}/${res?.max || 3})`;
+                  Logger.log(`[Master Dispatcher] Tab pekerja ditunda: ${reasonText}. Menunggu slot selesai...`, 'warn');
+                }
+                incompleteLink.dataset.autofillNavigating = 'false';
+                incompleteLink.style.opacity = '1';
+              }
+            });
           });
-        });
-      } else if (hasCompleteRow && !hasIncompleteRow) {
-        Logger.log(`Transaksi untuk plat ${rowData.nopol} sudah berstatus Complete. Melompati baris Excel ini...`, 'success');
-        window._autofillLockUntil = Date.now() + this.stepDelay + 5000;
-        chrome.storage.local.get(['currentIndex'], (resIdx) => {
-          const nextIdx = (resIdx.currentIndex || 0) + 1;
-          chrome.storage.local.set({
-            currentIndex: nextIdx,
-            autofillStage: 'CREATE_PENYALURAN'
-          }, () => {
-            setTimeout(() => {
-              window.location.reload();
-            }, this.stepDelay);
-          });
-        });
-      } else {
-        // Plat nomor tidak ditemukan di list (baik Complete maupun In Progress) -> Wajib buat pendaftaran baru (+ Add New)
-        const addBtn = document.getElementById('btn-add-penyaluran');
-        if (addBtn) {
-          Logger.log(`Plat ${rowData.nopol} tidak ditemukan di list. Menambahkan transaksi baru (+ Add New)...`, 'info');
+        } else if (hasCompleteRow && !hasIncompleteRow) {
+          Logger.log(`Transaksi untuk plat ${rowData.nopol} sudah berstatus Complete. Melompati baris Excel ini...`, 'success');
           window._autofillLockUntil = Date.now() + this.stepDelay + 5000;
-          chrome.storage.local.set({
-            autofillStage: 'CREATE_PENYALURAN',
-            pengisianSubmitted: false,
-            gateInSubmitted: false,
-            gateOutSubmitted: false,
-            subIdx: 0
-          }, () => {
-            setTimeout(() => addBtn.click(), this.stepDelay);
+          chrome.storage.local.get(['currentIndex'], (resIdx) => {
+            const nextIdx = (resIdx.currentIndex || 0) + 1;
+            chrome.storage.local.set({
+              currentIndex: nextIdx,
+              autofillStage: 'CREATE_PENYALURAN'
+            }, () => {
+              setTimeout(() => {
+                window.location.reload();
+              }, this.stepDelay);
+            });
           });
         } else {
-          Logger.log('Tombol Add New (#btn-add-penyaluran) tidak ditemukan di list.', 'error');
+          // Plat nomor tidak ditemukan di list (baik Complete maupun In Progress) -> Wajib buat pendaftaran baru (+ Add New)
+          const addBtn = document.getElementById('btn-add-penyaluran');
+          if (addBtn) {
+            Logger.log(`Plat ${rowData.nopol} tidak ditemukan di list. Menambahkan transaksi baru (+ Add New)...`, 'info');
+            window._autofillLockUntil = Date.now() + this.stepDelay + 5000;
+            chrome.storage.local.set({
+              autofillStage: 'CREATE_PENYALURAN',
+              pengisianSubmitted: false,
+              gateInSubmitted: false,
+              gateOutSubmitted: false,
+              subIdx: 0
+            }, () => {
+              setTimeout(() => addBtn.click(), this.stepDelay);
+            });
+          } else {
+            Logger.log('Tombol Add New (#btn-add-penyaluran) tidak ditemukan di list.', 'error');
+          }
         }
-      }
+      });
     });
   }
 }
@@ -796,6 +878,7 @@ class PenyaluranAddPageHandler extends BasePageHandler {
           .catch(err => Logger.log('Gagal memilih Moda: ' + err, 'error'));
       }
 
+      const targetTujuanStr = `${rowData.nopol} - SPBU`;
       const tujuanLabel = document.getElementById('elh_Penyaluran_Tujuan');
       let tujuanInput = document.getElementById('x_Tujuan') || document.querySelector('[name*="Tujuan"]');
       if (tujuanLabel && !tujuanInput) {
@@ -805,17 +888,22 @@ class PenyaluranAddPageHandler extends BasePageHandler {
       const isTujuanReady = tujuanVal && tujuanVal !== "";
 
       if (tujuanInput && !isTujuanReady) {
-        Logger.log('Mencoba mengisi pilihan Tujuan: SPBU...', 'info');
+        Logger.log(`Mencoba mengisi pilihan Tujuan: ${targetTujuanStr}...`, 'info');
         if (tujuanInput.tagName === 'SELECT') {
-          Select2Helper.setSelectByValueOrText(tujuanInput, "SPBU")
+          Select2Helper.setSelectByValueOrText(tujuanInput, targetTujuanStr)
             .then((res) => {
-              if (res === true) Logger.log('Tujuan berhasil dipilih: SPBU', 'success');
+              if (res === true) Logger.log(`Tujuan berhasil dipilih: ${targetTujuanStr}`, 'success');
             })
-            .catch(err => Logger.log('Gagal memilih Tujuan: ' + err, 'error'));
+            .catch(err => {
+              Select2Helper.setSelectByValueOrText(tujuanInput, "SPBU")
+                .then(() => Logger.log('Tujuan dipasang fallback: SPBU', 'info'))
+                .catch(e => Logger.log('Gagal memilih Tujuan: ' + e, 'error'));
+            });
         } else {
-          tujuanInput.value = "SPBU";
-          tujuanInput.dispatchEvent(new Event('change'));
-          Logger.log('Tujuan berhasil diisi: SPBU', 'success');
+          tujuanInput.value = targetTujuanStr;
+          tujuanInput.dispatchEvent(new Event('change', { bubbles: true }));
+          tujuanInput.dispatchEvent(new Event('input', { bubbles: true }));
+          Logger.log(`Tujuan berhasil diisi: ${targetTujuanStr}`, 'success');
         }
       }
 
@@ -935,6 +1023,14 @@ class ProcessBridgePageHandler extends BasePageHandler {
     const pengisianStatus = getStepStatus('pengisian');
     const gateOutStatus = getStepStatus('gate out');
 
+    // Cek apakah seluruh baris di tabel aktivitas sudah completed ATAU MT Gate Out sudah completed
+    const allRowsCompleted = tableRows.length > 0 && tableRows.every(r => {
+      const txt = r.textContent.toLowerCase();
+      return txt.includes('completed') || txt.includes('selesai') || txt.includes('100%');
+    });
+
+    const isFullyCompleted = gateOutStatus.isCompleted || (allRowsCompleted && tableRows.length > 0);
+
     // Evaluasi stage yang paling tepat secara dinamis berdasarkan kondisi nyata di portal
     let targetStage = stage;
     let targetKw = 'gate in';
@@ -942,15 +1038,36 @@ class ProcessBridgePageHandler extends BasePageHandler {
     chrome.storage.local.get(['skipPengisian'], (resConfig) => {
       const skipPengisian = resConfig.skipPengisian || false;
 
-      if (gateInStatus.isCompleted) {
-        if (!pengisianStatus.isCompleted) {
+      if (isFullyCompleted) {
+        Logger.log(`Seluruh aktivitas Penyaluran Nopol ${rowData.nopol} sudah berstatus COMPLETED.`, 'success');
+        if (isWorker) {
+          Logger.log(`[Worker Tab] Mengirim sinyal WORKER_TASK_COMPLETED untuk plat ${rowData.nopol}...`, 'success');
+          chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
+        } else {
+          chrome.storage.local.get(['currentIndex'], (resIdx) => {
+            const nextIdx = (resIdx.currentIndex || 0) + 1;
+            chrome.storage.local.set({
+              currentIndex: nextIdx,
+              autofillStage: 'CREATE_PENYALURAN'
+            }, () => {
+              const penyaluranLink = document.querySelector('a[href*="PenyaluranList"]') || document.querySelector('a[href*="penyaluran_list"]');
+              if (penyaluranLink) penyaluranLink.click();
+              else window.location.href = '/PenyaluranList';
+            });
+          });
+        }
+        return;
+      }
+
+      if (gateInStatus.isCompleted || (gateInStatus.found === false && !allRowsCompleted)) {
+        if (!pengisianStatus.isCompleted && pengisianStatus.found) {
           if (skipPengisian) {
             Logger.log(`[Mode Semi-Otomatis] Gate In Nopol ${rowData.nopol} SELESAI. Standby menunggu pengisian Pengisian secara manual di portal...`, 'warn');
             return;
           }
           targetStage = 'GATE_IN_SUBMITTED';
           targetKw = 'pengisian';
-        } else if (!gateOutStatus.isCompleted) {
+        } else if (!gateOutStatus.isCompleted && gateOutStatus.found) {
           const hasGateOutTime = rowData && rowData.gateOutTime && String(rowData.gateOutTime).trim() !== "";
           if (!hasGateOutTime) {
             Logger.log(`[Gate Out Filter] Data Gate Out di Excel untuk plat ${rowData.nopol} kosong/belum ada. Melewati tahap Gate Out & menutup Tab Pekerja...`, 'warn');
@@ -962,24 +1079,9 @@ class ProcessBridgePageHandler extends BasePageHandler {
           targetStage = 'PENGISIAN_SUBMITTED';
           targetKw = 'gate out';
         } else {
-          Logger.log(`Seluruh aktivitas Penyaluran Nopol ${rowData.nopol} sudah berstatus COMPLETED.`, 'success');
-          if (isWorker) {
-            Logger.log(`[Worker Tab] Mengirim sinyal WORKER_TASK_COMPLETED untuk plat ${rowData.nopol}...`, 'success');
-            chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
-          } else {
-            chrome.storage.local.get(['currentIndex'], (resIdx) => {
-              const nextIdx = (resIdx.currentIndex || 0) + 1;
-              chrome.storage.local.set({
-                currentIndex: nextIdx,
-                autofillStage: 'CREATE_PENYALURAN'
-              }, () => {
-                const penyaluranLink = document.querySelector('a[href*="PenyaluranList"]') || document.querySelector('a[href*="penyaluran_list"]');
-                if (penyaluranLink) penyaluranLink.click();
-                else window.location.href = '/PenyaluranList';
-              });
-            });
-          }
-          return;
+          // Fallback jika step berikutnya tidak ditemukan
+          targetStage = 'GATE_IN_SUBMITTED';
+          targetKw = 'pengisian';
         }
       } else {
         targetStage = 'CREATE_PENYALURAN';

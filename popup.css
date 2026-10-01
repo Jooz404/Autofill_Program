@@ -41,7 +41,7 @@ html, body {
   font-family: var(--font-sans);
   background-color: var(--bg-primary);
   color: var(--text-main);
-  overflow-x: hidden;
+  overflow: hidden;
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
 }
@@ -64,12 +64,13 @@ html, body {
 
 .app-container {
   width: 100%;
-  min-height: 100vh;
-  padding: 12px;
+  height: 100vh;
+  padding: 10px;
   background: radial-gradient(circle at top right, #172236 0%, #0a0e17 70%);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  overflow: hidden;
 }
 
 /* Header Section */
@@ -77,9 +78,10 @@ html, body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-bottom: 10px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--border-color);
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .logo-area {
@@ -124,6 +126,7 @@ html, body {
   letter-spacing: 0.3px;
   background: linear-gradient(90deg, #ffffff, #cbd5e1);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   white-space: nowrap;
   overflow: hidden;
@@ -174,6 +177,7 @@ html, body {
   border-radius: 8px;
   border: 1px solid var(--border-color);
   gap: 4px;
+  flex-shrink: 0;
 }
 
 .tab-btn {
@@ -208,18 +212,21 @@ html, body {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .tab-section {
   display: none;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .tab-section.active {
   display: flex;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* Fluid Cards */
@@ -230,9 +237,10 @@ html, body {
   -webkit-backdrop-filter: blur(16px);
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  padding: 12px 14px;
+  padding: 10px 12px;
   box-shadow: var(--glow-card);
   transition: border-color 0.2s ease;
+  flex-shrink: 0;
 }
 
 .card:hover {
@@ -460,7 +468,9 @@ html, body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  min-height: 180px;
+  min-height: 0;
+  overflow: hidden;
+  flex-shrink: 1;
 }
 
 .clear-log {
@@ -476,7 +486,7 @@ html, body {
 
 .log-terminal {
   flex: 1;
-  min-height: 120px;
+  min-height: 60px;
   background: #04060a;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 7px;

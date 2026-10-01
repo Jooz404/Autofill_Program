@@ -356,7 +356,7 @@ class ExcelParser {
           let itemsList = ExcelParser.allocateLOsToProducts(loList, produkList, parsedVol);
 
           return {
-            rowNum: idx + 1,
+            rowNum: idx + 2, // Sesuaikan dengan nomor baris Excel (header = baris 1)
             nopol: String(rawNopol || '').replace(/\s+/g, '').toUpperCase().trim(),
             supir: String(rawSupir || '').trim(),
             volume: parsedVol,
@@ -374,6 +374,9 @@ class ExcelParser {
           this.logger.addLog('Error: Tidak ditemukan data plat nomor (No. Polisi) yang valid di Excel.', 'error');
           return;
         }
+
+        // Lakukan Pre-Flight Check untuk mendeteksi Nopol duplikat sebelum dibalik
+        this.validatePreFlightData(parsedRows);
 
         // Secara otomatis membalikkan urutan agar pemrosesan selalu dimulai dari baris TERBAWAH Excel ke atas
         parsedRows.reverse();
@@ -405,6 +408,49 @@ class ExcelParser {
     };
 
     reader.readAsArrayBuffer(file);
+  }
+
+  validatePreFlightData(rows) {
+    if (!rows || rows.length === 0) return;
+
+    const nopolMap = new Map();
+    rows.forEach(r => {
+      if (!r.nopol) return;
+      if (!nopolMap.has(r.nopol)) {
+        nopolMap.set(r.nopol, []);
+      }
+      nopolMap.get(r.nopol).push(r);
+    });
+
+    const duplicates = [];
+    nopolMap.forEach((occurrences, nopol) => {
+      if (occurrences.length > 1) {
+        duplicates.push({
+          nopol,
+          count: occurrences.length,
+          rowNumbers: occurrences.map(o => `#${o.rowNum}`),
+          drivers: [...new Set(occurrences.map(o => o.supir).filter(Boolean))],
+          products: [...new Set(occurrences.map(o => o.produk).filter(Boolean))]
+        });
+      }
+    });
+
+    if (duplicates.length > 0) {
+      this.logger.addLog('========================================', 'warn');
+      this.logger.addLog(`[PRE-FLIGHT CHECK] ⚠️ TERDETEKSI ${duplicates.length} PLAT NOMOR (NOPOL) GANDA / DOUBLE!`, 'error');
+      duplicates.forEach((d, idx) => {
+        const driverStr = d.drivers.length > 0 ? ` | Supir: ${d.drivers.join(', ')}` : '';
+        const prodStr = d.products.length > 0 ? ` | Produk: ${d.products.join(', ')}` : '';
+        this.logger.addLog(
+          `  ${idx + 1}. Nopol [ ${d.nopol} ] -> Muncul ${d.count}x di Baris Excel: (${d.rowNumbers.join(', ')})${prodStr}${driverStr}`,
+          'warn'
+        );
+      });
+      this.logger.addLog('[PRE-FLIGHT CHECK] Harap tinjau data duplikat di atas sebelum menekan tombol Mulai Autofill.', 'warn');
+      this.logger.addLog('========================================', 'warn');
+    } else {
+      this.logger.addLog('[PRE-FLIGHT CHECK] ✅ Validasi data bersih: Tidak ditemukan Nopol ganda.', 'success');
+    }
   }
 }
 
