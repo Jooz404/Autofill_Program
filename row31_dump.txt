@@ -1,0 +1,8 @@
+Col 1 (Tanggal Shipment): 2026-10-02 05:33:11
+Col 2 (Gate Out (State 80)): 2026-10-02 06:49:13
+Col 3 (No. Polisi): B9956SFV
+Col 4 (Supir aktual): ANDHIKA ARIYANDI MALE [73100201/62]
+Col 5 (Total volume[kL]): 16
+Col 6 (LO-KL): 8144797911,8144696005,
+Col 7 (Produk): PERTALITE;BIOSOLAR B50;
+Col 8 (Segel): 1005985,1005986,1005987,1005988,

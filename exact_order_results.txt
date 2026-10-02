@@ -1,0 +1,51 @@
+Row 02 (B9726SFU, Vol=16KL, LOs=['8144822906', '8144870059'], Prods=['PERTALITE', 'BIOSOLAR B50']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144822906'], 'volume': 8}
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144870059'], 'volume': 8.0}
+Row 03 (B9813SEH, Vol=24KL, LOs=['8144877919', '8144858065', '8144877921'], Prods=['PERTALITE', 'BIOSOLAR B50']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144877919', '8144858065'], 'volume': 16}
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144877921'], 'volume': 8.0}
+Row 06 (B9147SFV, Vol=16KL, LOs=['8144861616', '8144781841'], Prods=['PERTAMAX,BULK', 'PERTALITE']):
+   -> {'produk': 'PERTAMAX,BULK', 'loList': ['8144861616'], 'volume': 8}
+   -> {'produk': 'PERTALITE', 'loList': ['8144781841'], 'volume': 8.0}
+Row 08 (B9697SEI, Vol=24KL, LOs=['8144791357', '8144791352', '8144877887'], Prods=['PERTALITE', 'BIOSOLAR B50']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144791357', '8144791352'], 'volume': 16}
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144877887'], 'volume': 8.0}
+Row 10 (DB8976LM, Vol=24KL, LOs=['8144757618', '8144797887', '8144878593'], Prods=['PERTALITE', 'PERTAMAX,BULK']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144757618', '8144797887'], 'volume': 16}
+   -> {'produk': 'PERTAMAX,BULK', 'loList': ['8144878593'], 'volume': 8.0}
+Row 11 (B9598SFV, Vol=10KL, LOs=['8144861610', '8144861609'], Prods=['DEXLITE', 'BIOSOLAR B50']):
+   -> {'produk': 'DEXLITE', 'loList': ['8144861610'], 'volume': 8}
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144861609'], 'volume': 2.0}
+Row 13 (L9378UC, Vol=24KL, LOs=['8144751692', '8144751693', '8144877884'], Prods=['PERTALITE', 'DEXLITE']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144751692', '8144751693'], 'volume': 16}
+   -> {'produk': 'DEXLITE', 'loList': ['8144877884'], 'volume': 8.0}
+Row 14 (DB8180RK, Vol=24KL, LOs=['8144802203', '8144802208', '8144802209'], Prods=['PERTALITE', 'BIOSOLAR B50']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144802203', '8144802208'], 'volume': 16}
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144802209'], 'volume': 8.0}
+Row 17 (B9706SEI, Vol=24KL, LOs=['8144875409', '8144875408', '8144875402'], Prods=['PERTALITE', 'DEXLITE']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144875409', '8144875408'], 'volume': 16}
+   -> {'produk': 'DEXLITE', 'loList': ['8144875402'], 'volume': 8.0}
+Row 19 (B9257SFW, Vol=16KL, LOs=['8144861327', '8144883348'], Prods=['BIOSOLAR B50', 'PERTALITE']):
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144861327'], 'volume': 8}
+   -> {'produk': 'PERTALITE', 'loList': ['8144883348'], 'volume': 8.0}
+Row 20 (DB8017RK, Vol=24KL, LOs=['8144757621', '8144757622', '8144797907'], Prods=['PERTALITE', 'PERTAMAX,BULK']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144757621', '8144757622'], 'volume': 16}
+   -> {'produk': 'PERTAMAX,BULK', 'loList': ['8144797907'], 'volume': 8.0}
+Row 21 (B9512SFV, Vol=16KL, LOs=['8144756186', '8144791356'], Prods=['BIOSOLAR B50', 'PERTALITE']):
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144756186'], 'volume': 8}
+   -> {'produk': 'PERTALITE', 'loList': ['8144791356'], 'volume': 8.0}
+Row 22 (DB8015RK, Vol=24KL, LOs=['8144882176', '8144882178', '8144882177'], Prods=['BIOSOLAR B50', 'PERTALITE']):
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144882176'], 'volume': 8}
+   -> {'produk': 'PERTALITE', 'loList': ['8144882178', '8144882177'], 'volume': 16.0}
+Row 23 (B9686SEI, Vol=24KL, LOs=['8144877923', '8144885631', '8144885636'], Prods=['BIOSOLAR B50', 'PERTALITE']):
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144877923'], 'volume': 8}
+   -> {'produk': 'PERTALITE', 'loList': ['8144885631', '8144885636'], 'volume': 16.0}
+Row 28 (B9585SFV, Vol=16KL, LOs=['8144888200', '8144888201'], Prods=['BIOSOLAR B50', 'PERTALITE']):
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144888200'], 'volume': 8}
+   -> {'produk': 'PERTALITE', 'loList': ['8144888201'], 'volume': 8.0}
+Row 31 (B9956SFV, Vol=16KL, LOs=['8144797911', '8144696005'], Prods=['PERTALITE', 'BIOSOLAR B50']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144797911'], 'volume': 8}
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144696005'], 'volume': 8.0}
+Row 34 (B9270SFW, Vol=16KL, LOs=['8144887518', '8144887521'], Prods=['PERTALITE', 'BIOSOLAR B50']):
+   -> {'produk': 'PERTALITE', 'loList': ['8144887518'], 'volume': 8}
+   -> {'produk': 'BIOSOLAR B50', 'loList': ['8144887521'], 'volume': 8.0}

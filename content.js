@@ -578,6 +578,33 @@ class DOMUtils {
     return false;
   }
 
+  static generateFallbackGateOutTime(gateInTimeStr) {
+    if (gateInTimeStr) {
+      try {
+        const cleanStr = String(gateInTimeStr).trim().replace(/\//g, '-');
+        const d = new Date(cleanStr);
+        if (!isNaN(d.getTime())) {
+          d.setMinutes(d.getMinutes() + 30);
+          const yyyy = d.getFullYear();
+          const mm = String(d.getMonth() + 1).padStart(2, '0');
+          const dd = String(d.getDate()).padStart(2, '0');
+          const hh = String(d.getHours()).padStart(2, '0');
+          const min = String(d.getMinutes()).padStart(2, '0');
+          const ss = String(d.getSeconds()).padStart(2, '0');
+          return `${yyyy}/${mm}/${dd} ${hh}:${min}:${ss}`;
+        }
+      } catch (e) { }
+    }
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+    return `${yyyy}/${mm}/${dd} ${hh}:${min}:${ss}`;
+  }
+
   static isActivityStatusCompleted() {
     const isExcluded = (el) => {
       return !!el.closest('.stepper, .step, .bs-stepper, .breadcrumb, .main-header, .main-sidebar, .navbar, header, nav, footer');
@@ -1068,13 +1095,9 @@ class ProcessBridgePageHandler extends BasePageHandler {
           targetStage = 'GATE_IN_SUBMITTED';
           targetKw = 'pengisian';
         } else if (!gateOutStatus.isCompleted && gateOutStatus.found) {
-          const hasGateOutTime = rowData && rowData.gateOutTime && String(rowData.gateOutTime).trim() !== "";
-          if (!hasGateOutTime) {
-            Logger.log(`[Gate Out Filter] Data Gate Out di Excel untuk plat ${rowData.nopol} kosong/belum ada. Melewati tahap Gate Out & menutup Tab Pekerja...`, 'warn');
-            if (isWorker) {
-              chrome.runtime.sendMessage({ action: 'WORKER_TASK_COMPLETED' });
-            }
-            return;
+          if (!rowData.gateOutTime || String(rowData.gateOutTime).trim() === '') {
+            rowData.gateOutTime = DOMUtils.generateFallbackGateOutTime(rowData?.gateInTime);
+            Logger.log(`[Gate Out Fallback] Mengisi Waktu Gate Out otomatis untuk plat ${rowData.nopol}: ${rowData.gateOutTime}`, 'info');
           }
           targetStage = 'PENGISIAN_SUBMITTED';
           targetKw = 'gate out';
@@ -2241,9 +2264,12 @@ class GateOutPageHandler extends BasePageHandler {
       const gateOutInput = document.getElementById('x_WaktuGateOut') || document.querySelector('.tempus-dominus-input');
       if (gateOutInput) {
         if (!gateOutInput.value || gateOutInput.value.trim() === '') {
-          gateOutInput.value = rowData.gateOutTime || '';
+          const finalGateOutTime = (rowData.gateOutTime && String(rowData.gateOutTime).trim() !== '')
+            ? rowData.gateOutTime
+            : DOMUtils.generateFallbackGateOutTime(rowData.gateInTime);
+          gateOutInput.value = finalGateOutTime;
           gateOutInput.dispatchEvent(new Event('change', { bubbles: true }));
-          Logger.log(`Mengisi Waktu Gate Out: ${rowData.gateOutTime}`, 'info');
+          Logger.log(`Mengisi Waktu Gate Out: ${finalGateOutTime}`, 'info');
         }
       }
 

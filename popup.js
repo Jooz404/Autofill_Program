@@ -167,6 +167,17 @@ class ExcelParser {
     this.btnStart = btnStart;
   }
 
+  /**
+   * CRITICAL DOMAIN LOGIC - ATURAN VITAL ALOKASI MULTI-PRODUK & PEMETAAN LO
+   * 
+   * 1. PRESERVE EXCEL ORDER (1-to-1 Mapping):
+   *    produkList & loList HARUS dipasangkan 1-ke-1 dari kiri ke kanan sesuai urutan Excel.
+   *    DILARANG MEN-SORT produkList karena akan membalikkan urutan nomor LO!
+   * 
+   * 2. COMPARTMENT & VOLUME ALLOCATION:
+   *    Truk dialokasikan per kompartemen (8 KL per block).
+   *    Sisa kompartemen diberikan ke produk prioritas lebih tinggi tanpa merusak urutan array produk.
+   */
   static allocateLOsToProducts(loList, produkList, excelVolume = 0) {
     if (!produkList || produkList.length === 0) {
       produkList = ['PERTALITE'];
@@ -179,105 +190,74 @@ class ExcelParser {
       return vol > 500 ? vol / 1000 : vol;
     };
     const totalKLFromExcel = normExcelKL(excelVolume);
+    const totalKL = totalKLFromExcel > 0 ? totalKLFromExcel : (loList.length > 0 ? loList.length * 8 : 8);
 
-    const items = [];
-    const totalLOs = loList.length;
+    const numProducts = produkList.length;
 
-    // Helper hitung volume KL per item: Utamakan volume Excel jika tersedia
-    const getVol = (assignedLOs, totalProds = 1) => {
-      if (totalKLFromExcel > 0) {
-        if (totalLOs > 0 && assignedLOs && assignedLOs.length > 0) {
-          return (assignedLOs.length / totalLOs) * totalKLFromExcel;
-        } else {
-          return totalKLFromExcel / totalProds;
-        }
-      }
-      return (assignedLOs && assignedLOs.length > 0) ? assignedLOs.length * 8 : 8;
-    };
-
-    // Skenario 1: 1 Produk (atau 0 produk) -> Seluruh LO dimasukkan sekaligus ke 1 produk
-    if (produkList.length === 1) {
-      const prod = produkList[0];
-      items.push({
-        produk: prod,
+    if (numProducts === 1) {
+      return [{
+        produk: produkList[0],
         loList: loList,
         combinedLO: loList.join(', '),
-        volume: getVol(loList, 1)
-      });
-      return items;
+        volume: totalKL
+      }];
     }
 
-    // Skenario 2: Jumlah Produk = Jumlah LO
-    if (loList.length === produkList.length) {
-      for (let i = 0; i < produkList.length; i++) {
-        const assigned = [loList[i]];
-        items.push({
-          produk: produkList[i],
-          loList: assigned,
-          combinedLO: loList[i],
-          volume: getVol(assigned, produkList.length)
-        });
+    const totalBlocks = Math.max(1, Math.round(totalKL / 8));
+
+    // Helper skor prioritas produk
+    const getPriorityScore = (pName) => {
+      const u = (pName || '').toUpperCase();
+      if (u.includes('PERTALITE')) return 100;
+      if (u.includes('SOLAR') || u.includes('BIOSOLAR')) return 80;
+      if (u.includes('DEXLITE') || u.includes('PERTADEX')) return 60;
+      if (u.includes('PERTAMAX')) return 40;
+      return 10;
+    };
+
+    // Tentukan jumlah kompartemen (blocks) untuk setiap produk dalam produkList
+    // (Berdasarkan prioritas relatif di antara produk yang ada, tetapi TETAP mempertahankan urutan produkList asli)
+    const blocksPerProduct = new Array(numProducts).fill(1);
+    let remainingBlocksToDistribute = totalBlocks - numProducts;
+
+    if (remainingBlocksToDistribute > 0) {
+      const indexedProducts = produkList.map((p, idx) => ({ idx, score: getPriorityScore(p) }));
+      indexedProducts.sort((a, b) => b.score - a.score);
+
+      for (let k = 0; k < indexedProducts.length && remainingBlocksToDistribute > 0; k++) {
+        const prodIdx = indexedProducts[k].idx;
+        blocksPerProduct[prodIdx] += 1;
+        remainingBlocksToDistribute -= 1;
       }
-      return items;
     }
 
-    // Skenario 3: Jumlah LO > Jumlah Produk (misal 3 LO, 2 Produk)
-    if (loList.length > produkList.length) {
-      // Helper skor prioritas alokasi sisa LO:
-      // Pertalite (100) > Biosolar/Solar (80) > Dexlite/Pertadex (60) > Pertamax (40) > Lainnya (10)
-      const getPriorityScore = (pName) => {
-        const u = (pName || '').toUpperCase();
-        if (u.includes('PERTALITE')) return 100;
-        if (u.includes('SOLAR') || u.includes('BIOSOLAR')) return 80;
-        if (u.includes('DEXLITE') || u.includes('PERTADEX')) return 60;
-        if (u.includes('PERTAMAX')) return 40;
-        return 10;
-      };
+    // Distribusikan Volume & LO secara berurutan sesuai urutan produkList ASLI dari Excel (kiri ke kanan)
+    const items = [];
+    let remainingKL = totalKL;
+    let loPointer = 0;
 
-      const loCounts = new Array(produkList.length).fill(1);
-      let remainingLOs = loList.length - produkList.length;
+    for (let i = 0; i < numProducts; i++) {
+      const prod = produkList[i];
+      const isLast = (i === numProducts - 1);
+      const allocBlocks = blocksPerProduct[i];
 
-      // Urutkan indeks produk dari prioritas tertinggi ke terendah
-      const indicesWithScore = produkList.map((p, idx) => ({
-        idx,
-        score: getPriorityScore(p)
-      }));
+      let prodVol = isLast ? remainingKL : Math.min(allocBlocks * 8, remainingKL);
+      remainingKL -= prodVol;
 
-      indicesWithScore.sort((a, b) => b.score - a.score);
+      // Ambil LO secara berurutan dari loList sesuai urutan Excel
+      const numLOsNeeded = Math.max(1, (loList.length >= totalBlocks) ? allocBlocks : Math.round((prodVol / (totalKL || 1)) * loList.length));
+      const assignedLOs = loList.slice(loPointer, isLast ? loList.length : loPointer + numLOsNeeded);
+      loPointer += assignedLOs.length;
 
-      let targetIdxPointer = 0;
-      while (remainingLOs > 0) {
-        const idxToGive = indicesWithScore[targetIdxPointer % indicesWithScore.length].idx;
-        loCounts[idxToGive]++;
-        remainingLOs--;
-        targetIdxPointer++;
-      }
+      const finalLOList = assignedLOs.length > 0
+        ? assignedLOs
+        : (loList.length > 0 ? [loList[Math.min(loPointer, loList.length - 1)] || ''] : []);
 
-      let loPointer = 0;
-      for (let i = 0; i < produkList.length; i++) {
-        const count = loCounts[i];
-        const assignedLOs = loList.slice(loPointer, loPointer + count);
-        loPointer += count;
-
-        items.push({
-          produk: produkList[i],
-          loList: assignedLOs,
-          combinedLO: assignedLOs.join(', '),
-          volume: getVol(assignedLOs, produkList.length)
-        });
-      }
-
-      return items;
-    }
-
-    // Skenario 4: Jumlah LO < Jumlah Produk
-    for (let i = 0; i < produkList.length; i++) {
-      const assignedLOs = i < loList.length ? [loList[i]] : [];
       items.push({
-        produk: produkList[i],
-        loList: assignedLOs,
-        combinedLO: assignedLOs.join(', '),
-        volume: getVol(assignedLOs, produkList.length)
+        produk: prod,
+        loList: finalLOList,
+        combinedLO: finalLOList.join(', '),
+        volume: prodVol
       });
     }
 
