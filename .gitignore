@@ -1,8 +1,38 @@
-# File & folder yang diabaikan dari Git
+# ==============================================================================
+# Pertamina S&D Autofill Assistant - Git Ignore Rules
+# ==============================================================================
+
+# Dependencies
 node_modules/
-.tmp/
+package-lock.json.bak
+
+# Operational & Private Excel / Spreadsheet Data
+*.xlsx
+*.xls
+*.csv
+~$*
+
+# Allow sanitized template spreadsheet for user demonstration
+!template_data_penyaluran.xlsx
+
+# Debug & Temporary Dump Files
 *.log
-Thumbs.db
+*.tmp
+*.txt
+*.bak
+*_dump.txt
+*_results.txt
+
+# OS & File System Artifacts
 .DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editor Settings
 .vscode/
 .idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

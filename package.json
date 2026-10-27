@@ -4,7 +4,7 @@
   "description": "Autofill Chrome Extension Automation",
   "main": "background.js",
   "scripts": {
-    "lint": "eslint content.js popup.js background.js penyimpanan.js"
+    "lint": "eslint content.js popup.js background.js"
   },
   "devDependencies": {
     "eslint": "^8.57.0"

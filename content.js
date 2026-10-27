@@ -548,7 +548,7 @@ class DOMUtils {
     const targetClean = DOMUtils.normalizeNopol(targetNopol);
     if (!targetClean) return false;
 
-    // 1. Cek langsung teks cell pada tabel (termasuk kolom Tujuan "NOPOL - SPBU")
+    // 1. Cek langsung teks cell pada tabel (termasuk kolom Nomor Polisi)
     const cells = rowEl.querySelectorAll('td');
     for (let cell of cells) {
       const cellClean = DOMUtils.normalizeNopol(cell.textContent);
@@ -565,7 +565,7 @@ class DOMUtils {
     // 2. Pencocokan berbasis Nomor Penyaluran (IdReferensi) via nopolMappings
     if (mappings && Object.keys(mappings).length > 0) {
       const idMatch = rowEl.textContent.match(/\b(S-\d{4}-\d{8}-\d{4})\b/i) ||
-                      rowEl.textContent.match(/\b(S-[A-Za-z0-9\-]{10,25})\b/i);
+                      rowEl.textContent.match(/\b(S-[A-Za-z0-9-]{10,25})\b/i);
       if (idMatch) {
         const rowIdRef = idMatch[1].trim();
         const mappedNopol = mappings[rowIdRef];
@@ -674,7 +674,7 @@ class DOMUtils {
     }
 
     const pageText = document.body?.innerText || '';
-    const match = pageText.match(/\b(S-\d{4}-\d{8}-\d{4})\b/i) || pageText.match(/\b(S-[A-Za-z0-9\-]{10,25})\b/i);
+    const match = pageText.match(/\b(S-\d{4}-\d{8}-\d{4})\b/i) || pageText.match(/\b(S-[A-Za-z0-9-]{10,25})\b/i);
     if (match) {
       const foundId = match[1].trim();
       sessionStorage.setItem('last_id_referensi', foundId);
@@ -905,7 +905,7 @@ class PenyaluranAddPageHandler extends BasePageHandler {
           .catch(err => Logger.log('Gagal memilih Moda: ' + err, 'error'));
       }
 
-      const targetTujuanStr = `${rowData.nopol} - SPBU`;
+      const targetTujuanStr = "SPBU";
       const tujuanLabel = document.getElementById('elh_Penyaluran_Tujuan');
       let tujuanInput = document.getElementById('x_Tujuan') || document.querySelector('[name*="Tujuan"]');
       if (tujuanLabel && !tujuanInput) {
@@ -921,11 +921,7 @@ class PenyaluranAddPageHandler extends BasePageHandler {
             .then((res) => {
               if (res === true) Logger.log(`Tujuan berhasil dipilih: ${targetTujuanStr}`, 'success');
             })
-            .catch(err => {
-              Select2Helper.setSelectByValueOrText(tujuanInput, "SPBU")
-                .then(() => Logger.log('Tujuan dipasang fallback: SPBU', 'info'))
-                .catch(e => Logger.log('Gagal memilih Tujuan: ' + e, 'error'));
-            });
+            .catch(err => Logger.log('Gagal memilih Tujuan: ' + err, 'error'));
         } else {
           tujuanInput.value = targetTujuanStr;
           tujuanInput.dispatchEvent(new Event('change', { bubbles: true }));

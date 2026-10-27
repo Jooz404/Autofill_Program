@@ -51,8 +51,8 @@ class DateFormatter {
     } else {
       const str = excelDate.toString().trim();
 
-      const ddMMyyyyRegex = /^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
-      const yyyyMMddRegex = /^(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
+      const ddMMyyyyRegex = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
+      const yyyyMMddRegex = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/;
 
       let match = str.match(ddMMyyyyRegex);
       if (match) {
@@ -77,7 +77,7 @@ class DateFormatter {
       }
 
       try {
-        const hasTimezoneInfo = /[zZ]|[+\-]\d{2}:?\d{2}$/.test(str);
+        const hasTimezoneInfo = /[zZ]|[+-]\d{2}:?\d{2}$/.test(str);
         const isoLikeStr = /^\d{4}-\d{2}-\d{2}/.test(str) && !hasTimezoneInfo
           ? str.replace(' ', 'T') + 'Z'
           : str;
